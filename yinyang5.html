@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Yin Yang — Figure Eight Mode</title>
+
+<style>
+html, body {
+  margin: 0;
+  background: black;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+  color: #ddd;
+}
+
+#container {
+  position: relative;
+  width: 420px;
+  height: 420px;
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+}
+
+#hud {
+  position: absolute;
+  bottom: -90px;
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+input[type="range"] {
+  width: 240px;
+}
+
+.small {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+kbd {
+  background: #222;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="container">
+
+<svg id="spinner" viewBox="-100 -100 200 200">
+
+  <!-- outer disk -->
+  <circle id="outer" r="100" fill="white"/>
+
+  <!-- yin/yang curve -->
+  <path id="half" d="
+    M 0 -100
+    A 100 100 0 0 1 0 100
+    A 50 50 0 0 0 0 0
+    A 50 50 0 0 1 0 -100
+  " fill="black"/>
+
+  <!-- lobes -->
+  <circle id="lobe1" cx="0" cy="-50" r="50" fill="white"/>
+  <circle id="lobe2" cx="0" cy="50"  r="50" fill="black"/>
+
+  <!-- EIGHT MODE DOTS -->
+  <circle id="dot1" cx="0" cy="-42" r="14"
+          fill="black" stroke="white" stroke-width="2"/>
+  <circle id="dot2" cx="0" cy="42" r="14"
+          fill="white" stroke="black" stroke-width="2"/>
+
+</svg>
+
+<div id="hud">
+  <div><strong>RPM:</strong> <span id="rpm">0.0</span></div>
+
+  <div style="margin-top:6px;">
+    <input id="rpmSlider" type="range" min="0" max="600" step="1" value="400">
+    <span id="rpmTarget">400</span>
+  </div>
+
+  <div class="small">
+    <kbd>Space</kbd> start/stop ·
+    <kbd>↑</kbd>/<kbd>↓</kbd> speed ·
+    <kbd>R</kbd> reset
+  </div>
+</div>
+
+</div>
+
+<script>
+const spinner = document.getElementById("spinner");
+
+const outer = document.getElementById("outer");
+const half  = document.getElementById("half");
+const lobe1 = document.getElementById("lobe1");
+const lobe2 = document.getElementById("lobe2");
+const dot1  = document.getElementById("dot1");
+const dot2  = document.getElementById("dot2");
+
+const rpmEl = document.getElementById("rpm");
+const slider = document.getElementById("rpmSlider");
+const rpmTargetEl = document.getElementById("rpmTarget");
+
+let angle = 0;
+let speed = 0;
+let running = true;
+
+let targetRPM = Number(slider.value);
+
+let last = performance.now();
+let hue = 0;
+
+function rpmToDeg(rpm) {
+  return rpm * 6;
+}
+
+function hsl(h) {
+  return `hsl(${(h % 360 + 360) % 360},100%,60%)`;
+}
+
+function updateColors() {
+  outer.setAttribute("fill", hsl(hue));
+  half.setAttribute("fill", hsl(hue + 180));
+  lobe1.setAttribute("fill", hsl(hue + 90));
+  lobe2.setAttribute("fill", hsl(hue + 270));
+  dot1.setAttribute("fill", hsl(hue + 180));
+  dot2.setAttribute("fill", hsl(hue));
+}
+
+function tick(now) {
+  const dt = (now - last) / 1000;
+  last = now;
+
+  if (running) {
+    const targetSpeed = rpmToDeg(targetRPM);
+    speed += (targetSpeed - speed) * Math.min(1, 10 * dt);
+
+    angle = (angle + speed * dt) % 360;
+    spinner.style.transform = `rotate(${angle}deg)`;
+
+    const rpm = speed / 6;
+    rpmEl.textContent = rpm.toFixed(1);
+
+    hue += (speed * 0.02 * dt);
+    updateColors();
+  }
+
+  requestAnimationFrame(tick);
+}
+
+slider.addEventListener("input", () => {
+  targetRPM = Number(slider.value);
+  rpmTargetEl.textContent = slider.value;
+});
+
+window.addEventListener("keydown", e => {
+  if (e.key === " ") {
+    e.preventDefault();
+    running = !running;
+  }
+
+  if (e.key === "r" || e.key === "R") {
+    targetRPM = 400;
+    slider.value = 400;
+    rpmTargetEl.textContent = "400";
+    speed = rpmToDeg(400);
+    angle = 0;
+    hue = 0;
+  }
+
+  if (e.key === "ArrowUp") {
+    targetRPM = Math.min(600, targetRPM + 5);
+    slider.value = targetRPM;
+    rpmTargetEl.textContent = targetRPM;
+  }
+
+  if (e.key === "ArrowDown") {
+    targetRPM = Math.max(0, targetRPM - 5);
+    slider.value = targetRPM;
+    rpmTargetEl.textContent = targetRPM;
+  }
+});
+
+updateColors();
+requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>
