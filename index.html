@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Yin Yang — Figure Eight Mode (Indexed Colors)</title>
+<title>Yin Yang — Figure Eight Indexed Mode</title>
 
 <style>
 html, body {
@@ -23,7 +23,10 @@ html, body {
   height: 420px;
 }
 
-svg { width: 100%; height: 100%; }
+svg {
+  width: 100%;
+  height: 100%;
+}
 
 #hud {
   position: absolute;
@@ -34,7 +37,9 @@ svg { width: 100%; height: 100%; }
   opacity: 0.85;
 }
 
-input[type="range"] { width: 240px; }
+input[type="range"] {
+  width: 240px;
+}
 
 .small {
   font-size: 12px;
@@ -52,6 +57,7 @@ kbd {
 </head>
 
 <body>
+
 <div id="container">
 
 <svg id="spinner" viewBox="-100 -100 200 200">
@@ -59,7 +65,7 @@ kbd {
   <!-- outer disk -->
   <circle id="outer" r="100" fill="white"/>
 
-  <!-- yin/yang curve -->
+  <!-- yin-yang curve -->
   <path id="half" d="
     M 0 -100
     A 100 100 0 0 1 0 100
@@ -71,11 +77,9 @@ kbd {
   <circle id="lobe1" cx="0" cy="-50" r="50" fill="white"/>
   <circle id="lobe2" cx="0" cy="50"  r="50" fill="black"/>
 
-  <!-- EIGHT MODE DOTS -->
-  <circle id="dot1" cx="0" cy="-42" r="14"
-          fill="black" stroke="white" stroke-width="2"/>
-  <circle id="dot2" cx="0" cy="42" r="14"
-          fill="white" stroke="black" stroke-width="2"/>
+  <!-- EIGHT MODE DOTS (no borders) -->
+  <circle id="dot1" cx="0" cy="-42" r="14" fill="black"/>
+  <circle id="dot2" cx="0" cy="42"  r="14" fill="white"/>
 
 </svg>
 
@@ -119,11 +123,13 @@ let targetRPM = Number(slider.value);
 let last = performance.now();
 let hue = 0;
 
-// ----- Indexed color settings -----
-const steps = 24;                 // 12/24/36 are good starting points
-const stepSize = 360 / steps;     // degrees per color step
+/* indexed color stepping */
+const steps = 24;
+const stepSize = 360 / steps;
 
-function rpmToDeg(rpm) { return rpm * 6; } // rpm -> deg/sec
+function rpmToDeg(rpm) {
+  return rpm * 6;
+}
 
 function hsl(h) {
   return `hsl(${(h % 360 + 360) % 360},100%,60%)`;
@@ -143,21 +149,17 @@ function tick(now) {
   last = now;
 
   if (running) {
-    // Smoothly chase target RPM
     const targetSpeed = rpmToDeg(targetRPM);
     speed += (targetSpeed - speed) * Math.min(1, 10 * dt);
 
-    // Rotate
     angle = (angle + speed * dt) % 360;
     spinner.style.transform = `rotate(${angle}deg)`;
 
-    // Display RPM
     const rpm = speed / 6;
     rpmEl.textContent = rpm.toFixed(1);
 
-    // ---- Indexed hue advance (STEPPED) ----
-    hue += (speed * 0.02 * dt);                       // underlying phase
-    hue = Math.round(hue / stepSize) * stepSize;      // snap to steps
+    hue += (speed * 0.02 * dt);
+    hue = Math.round(hue / stepSize) * stepSize;
 
     updateColors();
   }
@@ -165,13 +167,11 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-// Slider control
 slider.addEventListener("input", () => {
   targetRPM = Number(slider.value);
   rpmTargetEl.textContent = slider.value;
 });
 
-// Keyboard controls
 window.addEventListener("keydown", e => {
   if (e.key === " ") {
     e.preventDefault();
@@ -206,4 +206,3 @@ requestAnimationFrame(tick);
 
 </body>
 </html>
-
