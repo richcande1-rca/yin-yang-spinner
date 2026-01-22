@@ -127,8 +127,9 @@
     </div>
 
     <div class="row">
-      <input id="rpmSlider" type="range" min="0" max="600" step="1" value="400" />
-      <span><strong>Target:</strong> <span id="rpmTarget">400</span></span>
+      <!-- Start at a calm 20 RPM by default -->
+      <input id="rpmSlider" type="range" min="0" max="600" step="1" value="20" />
+      <span><strong>Target:</strong> <span id="rpmTarget">20</span></span>
     </div>
 
     <div class="controls">
@@ -169,8 +170,9 @@
 
   let angle = 0;         // degrees
   let speed = 0;         // deg/sec
-  let running = true;
+  let running = true;    // auto-start spinning
 
+  // Start at the slider value (20 RPM) for a smooth ramp-up
   let targetRPM = Number(slider.value);
 
   let last = performance.now();
@@ -186,7 +188,7 @@
     return `hsl(${(h % 360 + 360) % 360},100%,60%)`;
   }
 
-  function updateColorsIndexed() {
+  function updateColors() {
     outer.setAttribute("fill", hsl(hue));
     half.setAttribute("fill", hsl(hue + 180));
     lobe1.setAttribute("fill", hsl(hue + 90));
@@ -226,6 +228,7 @@
   }
 
   function resetAll() {
+    // Reset remains your "demo" preset
     targetRPM = 400;
     slider.value = 400;
     rpmTargetEl.textContent = "400";
@@ -241,7 +244,7 @@
   }
 
   // ----- MODES -----
-  let modeIndex = 1; // default to Indexed Color (0,1,2)
+  let modeIndex = 1; // default to Indexed Color (Stepped)
   const modes = [
     {
       name: "Classic (B/W)",
@@ -257,26 +260,23 @@
       name: "Indexed Color (Stepped)",
       onEnter() {
         setDotStroke(false);
-        // optional: hue = 0;
-        updateColorsIndexed();
+        updateColors();
       },
       update(dt) {
         hue += (speed * 0.02 * dt);
         hue = Math.round(hue / stepSize) * stepSize;
-        updateColorsIndexed();
+        updateColors();
       }
     },
     {
       name: "Outlined Eyes (Smooth Hue)",
       onEnter() {
         setDotStroke(true);
-        // optional: hue = 0;
-        updateColorsIndexed();
+        updateColors();
       },
       update(dt) {
-        // smooth hue (no stepping)
-        hue += (speed * 0.02 * dt);
-        updateColorsIndexed();
+        hue += (speed * 0.02 * dt); // smooth hue (no stepping)
+        updateColors();
       }
     }
   ];
@@ -341,7 +341,7 @@
     if (running) {
       const targetSpeed = rpmToDeg(targetRPM);
 
-      // chase / easing
+      // Smooth acceleration toward target (already feels great)
       speed += (targetSpeed - speed) * Math.min(1, 10 * dt);
 
       angle = (angle + speed * dt) % 360;
@@ -355,7 +355,7 @@
     requestAnimationFrame(tick);
   }
 
-  // init
+  // init (auto-start)
   applyMode(modeIndex);
   setRunning(true);
   requestAnimationFrame(tick);
@@ -363,4 +363,5 @@
 
 </body>
 </html>
+
 
