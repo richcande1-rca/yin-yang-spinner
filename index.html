@@ -48,13 +48,9 @@
     user-select: none;
   }
 
-  .row {
-    margin-top: 6px;
-  }
+  .row { margin-top: 6px; }
 
-  input[type="range"] {
-    width: 240px;
-  }
+  input[type="range"] { width: 240px; }
 
   .small {
     font-size: 12px;
@@ -89,9 +85,7 @@
 
   button:active { transform: translateY(1px); }
 
-  .paused {
-    opacity: 0.6;
-  }
+  .paused { opacity: 0.6; }
 
   .cruiseOn {
     border-color: #888;
@@ -171,13 +165,13 @@
   const modeBtn = document.getElementById("modeBtn");
   const modeNameEl = document.getElementById("modeName");
 
-  let angle = 0;         // degrees
-  let speed = 0;         // deg/sec (actual speed)
+  let angle = 0;           // degrees
+  let speed = 0;           // deg/sec (actual)
   let running = true;
 
-  let targetRPM = 0;     // desired RPM
-  let autoRamp = true;   // ramps targetRPM upward until max
-  let cruiseOn = false;  // purely UI/state indicator
+  let targetRPM = 0;       // desired
+  let autoRamp = true;     // ramps targetRPM upward to max
+  let cruiseOn = false;    // locks current RPM; pressing again resumes autoRamp
 
   let last = performance.now();
   let hue = 0;
@@ -243,34 +237,43 @@
     cruiseBtn.textContent = on ? "Cruise: On" : "Cruise";
   }
 
+  function cancelCruise() {
+    if (cruiseOn) setCruiseUI(false);
+  }
+
   function brake() {
-    // Graceful spool down (doesn't freeze like Pause)
     autoRamp = false;
-    setCruiseUI(false);
+    cancelCruise();
     setRunning(true);
-    setTargetRPM(0);
+    setTargetRPM(0); // spools down over the accel limit
   }
 
   function cruise() {
-    // Lock current actual RPM as the target and stop auto ramping
-    autoRamp = false;
-    const currentRPM = speed / 6;
-    setTargetRPM(Math.round(currentRPM));
-    setCruiseUI(true);
+    if (!cruiseOn) {
+      // Engage cruise: lock current RPM
+      autoRamp = false;
+      const currentRPM = speed / 6;
+      setTargetRPM(Math.round(currentRPM));
+      setCruiseUI(true);
+    } else {
+      // Disengage cruise: resume auto ramp
+      setCruiseUI(false);
+      autoRamp = true;
+    }
   }
 
   function resetAll() {
-    // True reboot: zero state then auto-ramp to max
+    // True reboot: zero state then auto-ramp from 0 -> max
     angle = 0;
     speed = 0;
     hue = 0;
     spinner.style.transform = "rotate(0deg)";
 
     autoRamp = true;
-    setCruiseUI(false);
+    cancelCruise();
 
     setRunning(true);
-    setTargetRPM(0); // auto ramp will push it upward
+    setTargetRPM(0); // autoRamp will push it upward
 
     modes[modeIndex].onEnter?.();
   }
@@ -312,8 +315,9 @@
 
   // ----- UI EVENTS -----
   slider.addEventListener("input", () => {
+    // Manual throttle cancels cruise + auto ramp (like pressing the gas)
+    cancelCruise();
     autoRamp = false;
-    setCruiseUI(false);
     setTargetRPM(Number(slider.value));
   });
 
@@ -327,23 +331,26 @@
     if (e.key === " ") {
       e.preventDefault();
       setRunning(!running);
+      return;
     }
 
-    if (e.key === "m" || e.key === "M") nextMode();
-    if (e.key === "r" || e.key === "R") resetAll();
-    if (e.key === "b" || e.key === "B") brake();
-    if (e.key === "c" || e.key === "C") cruise();
+    if (e.key === "m" || e.key === "M") { nextMode(); return; }
+    if (e.key === "r" || e.key === "R") { resetAll(); return; }
+    if (e.key === "b" || e.key === "B") { brake(); return; }
+    if (e.key === "c" || e.key === "C") { cruise(); return; }
 
     if (e.key === "ArrowUp") {
+      cancelCruise();
       autoRamp = false;
-      setCruiseUI(false);
       setTargetRPM(targetRPM + 5);
+      return;
     }
 
     if (e.key === "ArrowDown") {
+      cancelCruise();
       autoRamp = false;
-      setCruiseUI(false);
       setTargetRPM(targetRPM - 5);
+      return;
     }
   });
 
@@ -355,7 +362,7 @@
     if (running) {
       // Auto ramp targetRPM upward to max over ~10 seconds (0 -> 600)
       if (autoRamp) {
-        setCruiseUI(false);
+        cancelCruise();
         const rampRate = 600 / 10; // RPM per second
         setTargetRPM(targetRPM + rampRate * dt);
         if (targetRPM >= 600) autoRamp = false;
@@ -363,7 +370,7 @@
 
       const targetSpeed = rpmToDeg(targetRPM);
 
-      // 10-second acceleration 0 -> 600 RPM (600 RPM = 3600 deg/sec => 360 deg/sec^2)
+      // 10-second accel from 0 -> 600 RPM (600 RPM = 3600 deg/sec => 360 deg/sec^2)
       const maxAccel = 360; // deg/sec^2
 
       const delta = targetSpeed - speed;
@@ -383,12 +390,13 @@
 
   // init
   applyMode(modeIndex);
-  resetAll();              // starts at 0 and auto-ramps
+  resetAll(); // cold start + auto ramp
   requestAnimationFrame(tick);
 </script>
 
 </body>
 </html>
+
 
 
 
