@@ -135,13 +135,13 @@
     <div class="controls">
       <button id="toggleBtn" type="button">Pause</button>
       <button id="resetBtn" type="button">Reset</button>
-      <button id="zeroBtn" type="button">0 RPM</button>
+      <button id="brakeBtn" type="button">Brake</button>
       <button id="modeBtn" type="button">Mode</button>
     </div>
 
     <div class="small">
       <strong>Mode:</strong> <span id="modeName"></span><br>
-      <kbd>Space</kbd> start/stop · <kbd>↑</kbd>/<kbd>↓</kbd> speed · <kbd>R</kbd> reset · <kbd>M</kbd> mode
+      <kbd>Space</kbd> start/stop · <kbd>↑</kbd>/<kbd>↓</kbd> speed · <kbd>R</kbd> reset · <kbd>M</kbd> mode · <kbd>B</kbd> brake
     </div>
   </div>
 
@@ -164,7 +164,7 @@
 
   const toggleBtn = document.getElementById("toggleBtn");
   const resetBtn = document.getElementById("resetBtn");
-  const zeroBtn = document.getElementById("zeroBtn");
+  const brakeBtn = document.getElementById("brakeBtn");
   const modeBtn = document.getElementById("modeBtn");
   const modeNameEl = document.getElementById("modeName");
 
@@ -172,7 +172,7 @@
   let speed = 0;         // deg/sec
   let running = true;    // auto-start spinning
 
-  // IMPORTANT: Force MAX target on load (eliminates caching/old HTML value issues)
+  // Force MAX target on load
   let targetRPM = 600;
   slider.value = "600";
   rpmTargetEl.textContent = "600";
@@ -229,18 +229,27 @@
     rpmEl.classList.toggle("paused", !running);
   }
 
+  function setTargetRPM(rpm) {
+    targetRPM = Math.max(0, Math.min(600, rpm));
+    slider.value = String(targetRPM);
+    rpmTargetEl.textContent = String(targetRPM);
+  }
+
+  function brake() {
+    // Spool down gracefully to 0 (doesn't freeze like Pause)
+    setRunning(true);
+    setTargetRPM(0);
+  }
+
   function resetAll() {
-    // Reset remains your "demo" preset
-    targetRPM = 400;
-    slider.value = "400";
-    rpmTargetEl.textContent = "400";
-
-    // Smooth reset: ease back to target speed
-    speed = 0;
-
+    // True reboot: zero out state, then ramp up again
     angle = 0;
+    speed = 0;
     hue = 0;
     spinner.style.transform = "rotate(0deg)";
+
+    setRunning(true);
+    setTargetRPM(600);
 
     modes[modeIndex].onEnter?.();
   }
@@ -291,19 +300,12 @@
 
   // ----- UI EVENTS -----
   slider.addEventListener("input", () => {
-    targetRPM = Number(slider.value);
-    rpmTargetEl.textContent = slider.value;
+    setTargetRPM(Number(slider.value));
   });
 
   toggleBtn.addEventListener("click", () => setRunning(!running));
   resetBtn.addEventListener("click", resetAll);
-
-  zeroBtn.addEventListener("click", () => {
-    targetRPM = 0;
-    slider.value = "0";
-    rpmTargetEl.textContent = "0";
-  });
-
+  brakeBtn.addEventListener("click", brake);
   modeBtn.addEventListener("click", nextMode);
 
   window.addEventListener("keydown", (e) => {
@@ -320,16 +322,16 @@
       resetAll();
     }
 
+    if (e.key === "b" || e.key === "B") {
+      brake();
+    }
+
     if (e.key === "ArrowUp") {
-      targetRPM = Math.min(600, targetRPM + 5);
-      slider.value = String(targetRPM);
-      rpmTargetEl.textContent = String(targetRPM);
+      setTargetRPM(targetRPM + 5);
     }
 
     if (e.key === "ArrowDown") {
-      targetRPM = Math.max(0, targetRPM - 5);
-      slider.value = String(targetRPM);
-      rpmTargetEl.textContent = String(targetRPM);
+      setTargetRPM(targetRPM - 5);
     }
   });
 
@@ -341,8 +343,12 @@
     if (running) {
       const targetSpeed = rpmToDeg(targetRPM);
 
-      // Smooth acceleration toward target
-      speed += (targetSpeed - speed) * Math.min(1, 10 * dt);
+      // 10-second ramp 0 -> 600 RPM (600 RPM = 3600 deg/sec => 360 deg/sec^2)
+      const maxAccel = 360; // deg/sec^2
+
+      const delta = targetSpeed - speed;
+      const step = Math.sign(delta) * Math.min(Math.abs(delta), maxAccel * dt);
+      speed += step;
 
       angle = (angle + speed * dt) % 360;
       spinner.style.transform = `rotate(${angle}deg)`;
@@ -363,5 +369,6 @@
 
 </body>
 </html>
+
 
 
