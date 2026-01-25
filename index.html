@@ -92,6 +92,11 @@
   .paused {
     opacity: 0.6;
   }
+
+  .cruiseOn {
+    border-color: #888;
+    box-shadow: 0 0 0 1px #666 inset;
+  }
 </style>
 </head>
 
@@ -99,10 +104,8 @@
 <div id="container">
 
   <svg id="spinner" viewBox="-100 -100 200 200" aria-label="Yin Yang spinner" role="img">
-    <!-- outer disk -->
     <circle id="outer" r="100" fill="white"/>
 
-    <!-- yin-yang curve -->
     <path id="half" d="
       M 0 -100
       A 100 100 0 0 1 0 100
@@ -110,11 +113,9 @@
       A 50 50 0 0 1 0 -100
     " fill="black"/>
 
-    <!-- lobes -->
     <circle id="lobe1" cx="0" cy="-50" r="50" fill="white"/>
     <circle id="lobe2" cx="0" cy="50"  r="50" fill="black"/>
 
-    <!-- dots ("eyes") -->
     <circle id="dot1" cx="0" cy="-42" r="14" fill="black"/>
     <circle id="dot2" cx="0" cy="42"  r="14" fill="white"/>
   </svg>
@@ -127,21 +128,22 @@
     </div>
 
     <div class="row">
-      <!-- Default target is MAX so it ramps up on load -->
-      <input id="rpmSlider" type="range" min="0" max="600" step="1" value="600" />
-      <span><strong>Target:</strong> <span id="rpmTarget">600</span></span>
+      <input id="rpmSlider" type="range" min="0" max="600" step="1" value="0" />
+      <span><strong>Target:</strong> <span id="rpmTarget">0</span></span>
     </div>
 
     <div class="controls">
       <button id="toggleBtn" type="button">Pause</button>
       <button id="resetBtn" type="button">Reset</button>
       <button id="brakeBtn" type="button">Brake</button>
+      <button id="cruiseBtn" type="button">Cruise</button>
       <button id="modeBtn" type="button">Mode</button>
     </div>
 
     <div class="small">
       <strong>Mode:</strong> <span id="modeName"></span><br>
-      <kbd>Space</kbd> start/stop · <kbd>↑</kbd>/<kbd>↓</kbd> speed · <kbd>R</kbd> reset · <kbd>M</kbd> mode · <kbd>B</kbd> brake
+      <kbd>Space</kbd> start/stop · <kbd>↑</kbd>/<kbd>↓</kbd> speed · <kbd>R</kbd> reset ·
+      <kbd>M</kbd> mode · <kbd>B</kbd> brake · <kbd>C</kbd> cruise
     </div>
   </div>
 
@@ -165,25 +167,25 @@
   const toggleBtn = document.getElementById("toggleBtn");
   const resetBtn = document.getElementById("resetBtn");
   const brakeBtn = document.getElementById("brakeBtn");
+  const cruiseBtn = document.getElementById("cruiseBtn");
   const modeBtn = document.getElementById("modeBtn");
   const modeNameEl = document.getElementById("modeName");
 
   let angle = 0;         // degrees
-  let speed = 0;         // deg/sec
-  let running = true;    // auto-start spinning
+  let speed = 0;         // deg/sec (actual speed)
+  let running = true;
 
-  // Force MAX target on load
-  let targetRPM = 600;
-  slider.value = "600";
-  rpmTargetEl.textContent = "600";
+  let targetRPM = 0;     // desired RPM
+  let autoRamp = true;   // ramps targetRPM upward until max
+  let cruiseOn = false;  // purely UI/state indicator
 
   let last = performance.now();
   let hue = 0;
 
-  // indexed hue stepping
   const steps = 24;
   const stepSize = 360 / steps;
 
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
   function rpmToDeg(rpm) { return rpm * 6; } // 1 RPM = 6 deg/sec
 
   function hsl(h) {
@@ -230,47 +232,60 @@
   }
 
   function setTargetRPM(rpm) {
-    targetRPM = Math.max(0, Math.min(600, rpm));
-    slider.value = String(targetRPM);
-    rpmTargetEl.textContent = String(targetRPM);
+    targetRPM = clamp(rpm, 0, 600);
+    slider.value = String(Math.round(targetRPM));
+    rpmTargetEl.textContent = String(Math.round(targetRPM));
+  }
+
+  function setCruiseUI(on) {
+    cruiseOn = on;
+    cruiseBtn.classList.toggle("cruiseOn", on);
+    cruiseBtn.textContent = on ? "Cruise: On" : "Cruise";
   }
 
   function brake() {
-    // Spool down gracefully to 0 (doesn't freeze like Pause)
+    // Graceful spool down (doesn't freeze like Pause)
+    autoRamp = false;
+    setCruiseUI(false);
     setRunning(true);
     setTargetRPM(0);
   }
 
+  function cruise() {
+    // Lock current actual RPM as the target and stop auto ramping
+    autoRamp = false;
+    const currentRPM = speed / 6;
+    setTargetRPM(Math.round(currentRPM));
+    setCruiseUI(true);
+  }
+
   function resetAll() {
-    // True reboot: zero out state, then ramp up again
+    // True reboot: zero state then auto-ramp to max
     angle = 0;
     speed = 0;
     hue = 0;
     spinner.style.transform = "rotate(0deg)";
 
+    autoRamp = true;
+    setCruiseUI(false);
+
     setRunning(true);
-    setTargetRPM(600);
+    setTargetRPM(0); // auto ramp will push it upward
 
     modes[modeIndex].onEnter?.();
   }
 
   // ----- MODES -----
-  let modeIndex = 1; // default to Indexed Color (Stepped)
+  let modeIndex = 1;
   const modes = [
     {
       name: "Classic (B/W)",
-      onEnter() {
-        setDotStroke(false);
-        classicColors();
-      },
+      onEnter() { setDotStroke(false); classicColors(); },
       update(dt) {}
     },
     {
       name: "Indexed Color (Stepped)",
-      onEnter() {
-        setDotStroke(false);
-        updateColors();
-      },
+      onEnter() { setDotStroke(false); updateColors(); },
       update(dt) {
         hue += (speed * 0.02 * dt);
         hue = Math.round(hue / stepSize) * stepSize;
@@ -279,10 +294,7 @@
     },
     {
       name: "Outlined Eyes (Smooth Hue)",
-      onEnter() {
-        setDotStroke(true);
-        updateColors();
-      },
+      onEnter() { setDotStroke(true); updateColors(); },
       update(dt) {
         hue += (speed * 0.02 * dt);
         updateColors();
@@ -300,12 +312,15 @@
 
   // ----- UI EVENTS -----
   slider.addEventListener("input", () => {
+    autoRamp = false;
+    setCruiseUI(false);
     setTargetRPM(Number(slider.value));
   });
 
   toggleBtn.addEventListener("click", () => setRunning(!running));
   resetBtn.addEventListener("click", resetAll);
   brakeBtn.addEventListener("click", brake);
+  cruiseBtn.addEventListener("click", cruise);
   modeBtn.addEventListener("click", nextMode);
 
   window.addEventListener("keydown", (e) => {
@@ -314,23 +329,20 @@
       setRunning(!running);
     }
 
-    if (e.key === "m" || e.key === "M") {
-      nextMode();
-    }
-
-    if (e.key === "r" || e.key === "R") {
-      resetAll();
-    }
-
-    if (e.key === "b" || e.key === "B") {
-      brake();
-    }
+    if (e.key === "m" || e.key === "M") nextMode();
+    if (e.key === "r" || e.key === "R") resetAll();
+    if (e.key === "b" || e.key === "B") brake();
+    if (e.key === "c" || e.key === "C") cruise();
 
     if (e.key === "ArrowUp") {
+      autoRamp = false;
+      setCruiseUI(false);
       setTargetRPM(targetRPM + 5);
     }
 
     if (e.key === "ArrowDown") {
+      autoRamp = false;
+      setCruiseUI(false);
       setTargetRPM(targetRPM - 5);
     }
   });
@@ -341,9 +353,17 @@
     last = now;
 
     if (running) {
+      // Auto ramp targetRPM upward to max over ~10 seconds (0 -> 600)
+      if (autoRamp) {
+        setCruiseUI(false);
+        const rampRate = 600 / 10; // RPM per second
+        setTargetRPM(targetRPM + rampRate * dt);
+        if (targetRPM >= 600) autoRamp = false;
+      }
+
       const targetSpeed = rpmToDeg(targetRPM);
 
-      // 10-second ramp 0 -> 600 RPM (600 RPM = 3600 deg/sec => 360 deg/sec^2)
+      // 10-second acceleration 0 -> 600 RPM (600 RPM = 3600 deg/sec => 360 deg/sec^2)
       const maxAccel = 360; // deg/sec^2
 
       const delta = targetSpeed - speed;
@@ -361,14 +381,15 @@
     requestAnimationFrame(tick);
   }
 
-  // init (auto-start)
+  // init
   applyMode(modeIndex);
-  setRunning(true);
+  resetAll();              // starts at 0 and auto-ramps
   requestAnimationFrame(tick);
 </script>
 
 </body>
 </html>
+
 
 
 
