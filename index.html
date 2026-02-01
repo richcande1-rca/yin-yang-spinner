@@ -19,12 +19,19 @@
   }
 
   /* ----- BACKGROUND LAYERS ----- */
-  #bgAurora, #bgTunnel, #bgShade {
+  /* IMPORTANT: bgTunnel is NOT in this group (because inset:0 forces full-screen rectangle) */
+  #bgAurora, #bgShade {
     position: fixed;
     inset: 0;
-    z-index: 0;
     pointer-events: none;
   }
+
+  /* Explicit layer stack */
+  #bgAurora { z-index: 0; }
+  #bgTunnel { z-index: 1; }
+  #bgShade  { z-index: 2; }      /* dark vignette */
+  #stars    { z-index: 3; }      /* stars ABOVE vignette */
+  #container{ z-index: 4; position: relative; }
 
   #bgAurora{
     opacity: 1;
@@ -42,8 +49,18 @@
     will-change: background, filter;
   }
 
-  /* Chromatic tunnel rings (now vortex-rotated via transform) */
+  /* Tunnel is a big centered square so rotation never shows “rectangle corners” */
   #bgTunnel{
+    position: fixed;
+    inset: auto;            /* cancels inset:0 behavior */
+    left: 50%;
+    top: 45%;
+    width: 180vmax;
+    height: 180vmax;
+    transform: translate(-50%, -50%);
+    transform-origin: 50% 50%;
+    pointer-events: none;
+
     opacity: 1;
     background:
       repeating-radial-gradient(circle at var(--tcx, 50%) var(--tcy, 45%),
@@ -51,27 +68,27 @@
         hsla(var(--th2, 320), 100%, 55%, var(--ta, 0.06)) 10px,
         hsla(var(--th1, 200), 100%, 55%, 0.00) 22px);
     mix-blend-mode: screen;
-    transform-origin: 50% 45%;
     will-change: background, filter, transform;
   }
 
   #bgShade{
-    background: radial-gradient(circle at 50% 45%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.65) 65%, rgba(0,0,0,0.95) 100%);
+    background: radial-gradient(circle at 50% 45%,
+      rgba(0,0,0,0.05) 0%,
+      rgba(0,0,0,0.65) 65%,
+      rgba(0,0,0,0.95) 100%);
   }
 
   #stars {
     position: fixed;
     inset: 0;
-    z-index: 0;
     pointer-events: none;
+    mix-blend-mode: screen;  /* makes stars pop over shade/aurora/tunnel */
   }
 
   /* ----- SPINNER ----- */
   #container {
-    position: relative;
     width: 420px;
     height: 420px;
-    z-index: 2;
   }
 
   @media (max-width: 520px) {
@@ -438,315 +455,3 @@
         hue += (speed * 0.02 * dt);
         updateColors();
         const rpm = speed / 6;
-        const beatHz = 2 + 10 * (rpm / 600);
-        const strobe = (Math.sin(t * Math.PI * 2 * beatHz) > 0.4);
-        const wob = 1 + 0.012 * Math.sin(t * 3.3);
-        spinner.style.filter = strobe ? "invert(1) contrast(1.15)" : "contrast(1.05)";
-        spinner.style.transform = `rotate(${angle}deg) scale(${wob.toFixed(4)})`;
-      }
-    }
-  ];
-
-  function applyMode(i) {
-    modeIndex = (i + modes.length) % modes.length;
-    modeNameEl.textContent = modes[modeIndex].name;
-    modes[modeIndex].onEnter?.();
-  }
-  function nextMode(){ applyMode(modeIndex + 1); }
-
-  // ----- BACKGROUND SYSTEM -----
-  let bgOn = true;
-  let bgAuroraOn = true;
-  let bgTunnelOn = true;
-  let bgStarsOn = true;
-  let bgStrobe = true;
-
-  let bgLastWrite = 0;
-  let bgPhase = 0;
-
-  // Tunnel vortex rotation
-  let tunnelRot = 0;
-
-  // Starfield
-  let W = 0, H = 0, DPR = 1;
-  let starsList = [];
-
-  function resizeStars() {
-    DPR = Math.min(2, window.devicePixelRatio || 1);
-    W = Math.floor(window.innerWidth);
-    H = Math.floor(window.innerHeight);
-    stars.width = Math.floor(W * DPR);
-    stars.height = Math.floor(H * DPR);
-    stars.style.width = W + "px";
-    stars.style.height = H + "px";
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-
-    // MANY more stars, smaller
-    const base = Math.floor((W * H) / 9000);          // denser
-    const count = clamp(Math.floor(base * 1.9), 220, 620);
-
-    starsList = [];
-    for (let i = 0; i < count; i++) {
-      starsList.push({
-        x: Math.random() * W,
-        y: Math.random() * H,
-        z: Math.random(),                 // depth 0..1
-        r: 0.25 + Math.random() * 0.60,   // smaller!
-        tw: Math.random() * Math.PI * 2
-      });
-    }
-  }
-  window.addEventListener("resize", resizeStars);
-
-  function updateBackground(dt, now) {
-    if (!bgOn) {
-      bgAurora.style.opacity = "0";
-      bgTunnel.style.opacity = "0";
-      ctx.clearRect(0, 0, W, H);
-      return;
-    }
-
-    const rpm = speed / 6;
-    const energy = clamp(rpm / 600, 0, 1);
-    const e = energy * INT;
-
-    // Throttle CSS updates (~20fps)
-    if (now - bgLastWrite > 50) {
-      bgLastWrite = now;
-
-      // Reverse oscillating hue motion (triangle wave)
-      const rate = 0.10 + 1.15 * e;
-      bgPhase += dt * rate;
-      const tri = 1 - Math.abs(((bgPhase % 1) * 2) - 1);
-
-      // Strobe pulse (visible)
-      let pop = 0;
-      if (bgStrobe) {
-        const beatHz = 1.2 + 10.5 * e;
-        const st = Math.sin(t * Math.PI * 2 * beatHz);
-        pop = Math.max(0, (st - 0.65) / 0.35);
-        pop = pop * pop;
-      }
-
-      // Aurora
-      if (bgAuroraOn) {
-        const base = (hue + 30 + t * 8) % 360;
-        const ah1 = base + 220 * tri;
-        const ah2 = base + 180 - 220 * tri;
-        const ah3 = base + 90 + 120 * (1 - tri);
-
-        const aa1 = (0.10 + 0.28 * e) + pop * 0.14;
-        const aa2 = (0.08 + 0.22 * e) + pop * 0.12;
-        const aa3 = (0.06 + 0.18 * e) + pop * 0.10;
-
-        const ax1 = 25 + 18 * Math.sin(t * (0.22 + 0.5 * e));
-        const ay1 = 35 + 10 * Math.cos(t * (0.18 + 0.4 * e));
-        const ax2 = 70 + 15 * Math.cos(t * (0.17 + 0.55 * e));
-        const ay2 = 55 + 12 * Math.sin(t * (0.20 + 0.35 * e));
-        const ax3 = 55 + 22 * Math.sin(t * (0.14 + 0.45 * e));
-        const ay3 = 25 + 16 * Math.cos(t * (0.16 + 0.42 * e));
-
-        bgAurora.style.opacity = "1";
-        bgAurora.style.setProperty("--ah1", ah1.toFixed(1));
-        bgAurora.style.setProperty("--ah2", ah2.toFixed(1));
-        bgAurora.style.setProperty("--ah3", ah3.toFixed(1));
-        bgAurora.style.setProperty("--aa1", aa1.toFixed(3));
-        bgAurora.style.setProperty("--aa2", aa2.toFixed(3));
-        bgAurora.style.setProperty("--aa3", aa3.toFixed(3));
-        bgAurora.style.setProperty("--ax1", ax1.toFixed(1) + "%");
-        bgAurora.style.setProperty("--ay1", ay1.toFixed(1) + "%");
-        bgAurora.style.setProperty("--ax2", ax2.toFixed(1) + "%");
-        bgAurora.style.setProperty("--ay2", ay2.toFixed(1) + "%");
-        bgAurora.style.setProperty("--ax3", ax3.toFixed(1) + "%");
-        bgAurora.style.setProperty("--ay3", ay3.toFixed(1) + "%");
-      } else {
-        bgAurora.style.opacity = "0";
-      }
-
-      // Tunnel (with vortex drift center)
-      if (bgTunnelOn) {
-        const th1 = (hue + 40 + 180 * tri) % 360;
-        const th2 = (hue + 220 - 180 * tri) % 360;
-        const ta = (0.03 + 0.12 * e) + pop * 0.08;
-
-        // drift the center a little = more “vortex”
-        const tcx = 50 + 2.6 * Math.sin(t * (0.55 + 0.9 * e));
-        const tcy = 45 + 2.1 * Math.cos(t * (0.48 + 0.8 * e));
-
-        bgTunnel.style.opacity = "1";
-        bgTunnel.style.setProperty("--th1", th1.toFixed(1));
-        bgTunnel.style.setProperty("--th2", th2.toFixed(1));
-        bgTunnel.style.setProperty("--ta", ta.toFixed(3));
-        bgTunnel.style.setProperty("--tcx", tcx.toFixed(2) + "%");
-        bgTunnel.style.setProperty("--tcy", tcy.toFixed(2) + "%");
-      } else {
-        bgTunnel.style.opacity = "0";
-      }
-
-      // Strobe brightness punch
-      const bright = 1 + 0.85 * pop;
-      if (bgAuroraOn) bgAurora.style.filter = `saturate(1.2) contrast(1.05) brightness(${bright.toFixed(2)})`;
-      if (bgTunnelOn) bgTunnel.style.filter = `saturate(1.25) contrast(1.10) brightness(${bright.toFixed(2)})`;
-    }
-
-    // Tunnel vortex rotation (every frame for smooth motion)
-    if (bgTunnelOn) {
-      // Nonlinear speed-up: low rpm subtle, high rpm goes wild
-      const spin = (18 + 320 * (energy * energy)) * INT; // deg/sec
-      tunnelRot = (tunnelRot + spin * dt) % 360;
-      const swell = 1 + 0.06 * (energy * INT);
-      bgTunnel.style.transform = `rotate(${tunnelRot.toFixed(2)}deg) scale(${swell.toFixed(4)})`;
-    } else {
-      bgTunnel.style.transform = "none";
-    }
-
-    // Stars: more, smaller, accelerate harder with RPM
-    if (bgStarsOn) {
-      // fade: keep trails but not a fog wall
-      ctx.fillStyle = "rgba(0,0,0,0.16)";
-      ctx.fillRect(0, 0, W, H);
-
-      const cx = W * 0.5;
-      const cy = H * 0.45;
-
-      const breathe = 0.6 + 0.4 * Math.sin(t * 1.2);
-
-      // HARDER acceleration with RPM (energy^2 and energy^3 mix)
-      const accel = (0.6 + 7.0 * (energy * energy) + 8.0 * (energy * energy * energy)) * INT;
-      const warp = accel * breathe;
-
-      for (const s of starsList) {
-        s.tw += dt * (0.9 + 2.4 * energy) * (0.6 + s.z);
-        const twinkle = 0.60 + 0.40 * Math.sin(s.tw);
-
-        const dx = s.x - cx;
-        const dy = s.y - cy;
-
-        // swirl increases with warp
-        const swirl = 0.0040 * warp;
-        const rx = dx * Math.cos(swirl) - dy * Math.sin(swirl);
-        const ry = dx * Math.sin(swirl) + dy * Math.cos(swirl);
-
-        // faster movement proportional to warp
-        const denom = (160 + 520 * s.z);
-        const push = (warp * 220) * dt;
-        s.x += (rx / denom) * push;
-        s.y += (ry / denom) * push;
-
-        // wrap
-        if (s.x < -12) s.x = W + 12;
-        if (s.x > W + 12) s.x = -12;
-        if (s.y < -12) s.y = H + 12;
-        if (s.y > H + 12) s.y = -12;
-
-        // Smaller stars (even at high rpm)
-        const size  = s.r * (0.55 + 0.65 * (energy * INT)) * (0.85 + 0.55 * twinkle);
-        const alpha = (0.10 + 0.35 * (energy * INT)) * (0.55 + 0.70 * twinkle);
-
-        const hh = (hue + 110 * (s.z - 0.5)) % 360;
-        ctx.fillStyle = `hsla(${(hh+360)%360}, 100%, 78%, 1)`;
-
-        // glow (smaller)
-        ctx.globalAlpha = Math.min(1, alpha * 0.45);
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, size * 1.55, 0, Math.PI * 2);
-        ctx.fill();
-
-        // core (small sharp point)
-        ctx.globalAlpha = Math.min(1, alpha);
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, Math.max(0.35, size * 0.60), 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = 1;
-      }
-    } else {
-      ctx.clearRect(0, 0, W, H);
-    }
-  }
-
-  // ----- UI EVENTS -----
-  slider.addEventListener("input", () => {
-    cancelCruise();
-    autoRamp = false;
-    setTargetRPM(Number(slider.value));
-    writeTargetUI(targetRPM);
-  });
-
-  toggleBtn.addEventListener("click", () => setRunning(!running));
-  resetBtn.addEventListener("click", resetAll);
-  brakeBtn.addEventListener("click", brake);
-  cruiseBtn.addEventListener("click", cruise);
-  modeBtn.addEventListener("click", nextMode);
-
-  window.addEventListener("keydown", (e) => {
-    if (e.key === " ") { e.preventDefault(); setRunning(!running); return; }
-    if (e.key === "m" || e.key === "M") { nextMode(); return; }
-    if (e.key === "r" || e.key === "R") { resetAll(); return; }
-    if (e.key === "b" || e.key === "B") { brake(); return; }
-    if (e.key === "c" || e.key === "C") { cruise(); return; }
-
-    if (e.key === "g" || e.key === "G") { bgOn = !bgOn; return; }
-    if (e.key === "a" || e.key === "A") { bgAuroraOn = !bgAuroraOn; return; }
-    if (e.key === "t" || e.key === "T") { bgTunnelOn = !bgTunnelOn; return; }
-    if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; return; }
-    if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; return; }
-
-    if (e.key === "ArrowUp") { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
-    if (e.key === "ArrowDown") { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
-  });
-
-  // ----- ANIMATION LOOP -----
-  function tick(now) {
-    const dt = (now - last) / 1000;
-    last = now;
-    t += dt;
-
-    if (running) {
-      if (autoRamp) {
-        cancelCruise();
-        const rampRate = MAX_RPM / 10;
-        setTargetRPM(targetRPM + rampRate * dt);
-        if (targetRPM >= MAX_RPM) autoRamp = false;
-      }
-
-      const targetSpeed = rpmToDeg(targetRPM);
-
-      // Brake bite
-      const accel = 360;
-      const decel = 900;
-      const maxAccel = (targetSpeed < speed) ? decel : accel;
-
-      const delta = targetSpeed - speed;
-      const step = Math.sign(delta) * Math.min(Math.abs(delta), maxAccel * dt);
-      speed += step;
-
-      angle = (angle + speed * dt) % 360;
-
-      if (modes[modeIndex].name !== "Strobe Invert (Beat)") {
-        spinner.style.transform = `rotate(${angle}deg)`;
-      }
-
-      writeRPMUI(speed / 6);
-      modes[modeIndex].update?.(dt);
-    }
-
-    updateBackground(dt, now);
-
-    if (now - uiLastWrite > 50) {
-      uiLastWrite = now;
-      writeTargetUI(targetRPM);
-    }
-
-    requestAnimationFrame(tick);
-  }
-
-  // init
-  applyMode(modeIndex);
-  resizeStars();
-  resetAll();
-  requestAnimationFrame(tick);
-</script>
-
-</body>
-</html>
