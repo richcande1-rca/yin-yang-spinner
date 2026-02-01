@@ -28,8 +28,8 @@
   /* Explicit layer stack */
   #bgAurora { z-index: 0; }
   #tunnel   { z-index: 1; }
-  #bgShade  { z-index: 2; }      /* dark vignette */
-  #stars    { z-index: 3; }      /* stars ABOVE vignette */
+  #bgShade  { z-index: 2; }
+  #stars    { z-index: 3; }
   #container{ z-index: 4; position: relative; }
 
   #bgAurora{
@@ -48,13 +48,11 @@
     will-change: background, filter;
   }
 
-  /* CRISP tunnel on canvas */
+  /* Tunnel canvas (sized in JS) */
   #tunnel{
     position: fixed;
     left: 50%;
     top: 50%;
-    width: 180vmax;
-    height: 180vmax;
     transform: translate(-50%, -50%);
     transform-origin: 50% 50%;
     pointer-events: none;
@@ -487,14 +485,13 @@
 
   // ----- TUNNEL CANVAS (CRISP + OPTIMIZED) -----
   let TW = 0, TH = 0, TDPR = 1;
-  let ringSpacing = 16;    // a touch less dense = big speed win
+  let ringSpacing = 16;
   let ringCount = 0;
   let maxR = 0;
 
-  let ringPhase = 0;       // advances with rpm, locks timing
+  let ringPhase = 0;
   let activeRing = 0;
 
-  // Offscreen cache for BASE rings (draw once)
   const baseTunnel = document.createElement("canvas");
   const bctx = baseTunnel.getContext("2d", { alpha: true });
   let baseDirty = true;
@@ -503,17 +500,19 @@
   let tunnelLastDraw = 0;
 
   function resizeTunnel() {
-    // DPR cap for CB heat control:
     TDPR = 1;
 
-    const rect = tunnel.getBoundingClientRect();
-    TW = Math.max(1, Math.floor(rect.width));
-    TH = Math.max(1, Math.floor(rect.height));
+    const vmax = Math.max(window.innerWidth || 1, window.innerHeight || 1);
+    const side = Math.max(1, Math.floor(vmax * 1.8));
+
+    TW = side;
+    TH = side;
+
+    tunnel.style.width = side + "px";
+    tunnel.style.height = side + "px";
 
     tunnel.width  = Math.floor(TW * TDPR);
     tunnel.height = Math.floor(TH * TDPR);
-    tunnel.style.width = rect.width + "px";
-    tunnel.style.height = rect.height + "px";
 
     tctx.setTransform(TDPR, 0, 0, TDPR, 0, 0);
 
@@ -523,7 +522,6 @@
 
     ringCount = Math.max(18, Math.floor(maxR / ringSpacing));
 
-    // Rebuild base cache
     baseTunnel.width  = tunnel.width;
     baseTunnel.height = tunnel.height;
     bctx.setTransform(TDPR, 0, 0, TDPR, 0, 0);
@@ -532,19 +530,16 @@
     lastActiveRing = -1;
   }
 
-  window.addEventListener("resize", () => {
-    resizeTunnel();
-    resizeStars();
-  });
-
   function rebuildBaseTunnel() {
+    if (!Number.isFinite(TW) || !Number.isFinite(TH) || TW <= 0 || TH <= 0) return;
+    if (!Number.isFinite(ringCount) || ringCount <= 0) return;
+
     baseDirty = false;
     bctx.clearRect(0, 0, TW, TH);
 
     const cx = TW * 0.5;
     const cy = TH * 0.5;
 
-    // Static base rings (kept modest; strobe does the “wow”)
     const baseAlpha = 0.11;
     const baseWidth = 2.2;
 
@@ -564,14 +559,12 @@
     }
   }
 
-  function drawTunnel(rpm, energy, pop) {
+  function drawTunnel(energy, pop) {
     if (baseDirty) rebuildBaseTunnel();
 
-    // Clear + blit cached base in one cheap op
     tctx.clearRect(0, 0, TW, TH);
 
-    // Let base brightness breathe a bit with speed (cheap via globalAlpha)
-    const baseGain = 0.78 + 0.55 * energy; // 0.78..1.33
+    const baseGain = 0.78 + 0.55 * energy;
     tctx.globalAlpha = clamp(baseGain, 0.65, 1.0);
     tctx.drawImage(baseTunnel, 0, 0);
     tctx.globalAlpha = 1;
@@ -579,7 +572,6 @@
     const cx = TW * 0.5;
     const cy = TH * 0.5;
 
-    // Highlight ring (walking strobe)
     const hiAlpha = 0.62 + 0.20 * energy + 0.55 * pop;
     const hiWidth = 4.4 + 2.8 * energy;
 
@@ -590,14 +582,12 @@
 
     const rHead = maxR - activeRing * ringSpacing;
     if (rHead > 0) {
-      // head
       tctx.strokeStyle = `rgba(255,255,255, ${Math.min(1, hiAlpha).toFixed(3)})`;
       tctx.lineWidth = hiWidth;
       tctx.beginPath();
       tctx.arc(cx, cy, rHead, 0, Math.PI * 2);
       tctx.stroke();
 
-      // tail 1
       const idx1 = (activeRing + 1) % ringCount;
       const rTail1 = maxR - idx1 * ringSpacing;
       tctx.strokeStyle = `rgba(190,230,255, ${Math.min(1, tailAlpha).toFixed(3)})`;
@@ -606,7 +596,6 @@
       tctx.arc(cx, cy, rTail1, 0, Math.PI * 2);
       tctx.stroke();
 
-      // tail 2 (faint)
       const idx2 = (activeRing + 2) % ringCount;
       const rTail2 = maxR - idx2 * ringSpacing;
       tctx.strokeStyle = `rgba(160,210,255, ${Math.min(1, tailAlpha * 0.55).toFixed(3)})`;
@@ -630,7 +619,6 @@
     setRunning(true);
     setTargetRPM(0);
 
-    // reset tunnel stepping
     ringPhase = 0;
     activeRing = 0;
     lastActiveRing = -1;
@@ -655,7 +643,6 @@
     const energy = clamp(rpm / 600, 0, 1);
     const e = energy * INT;
 
-    // strobe pop (shared with aurora + tunnel)
     let pop = 0;
     if (bgStrobe) {
       const beatHz = 1.2 + 10.5 * e;
@@ -664,29 +651,28 @@
       pop = pop * pop;
     }
 
-    // WALKING STROBE LOCKED TO RPM:
-    // revolutions/sec = rpm/60
-    // One full outer->inner pass per revolution => steps/sec = (rpm/60)*ringCount
-    const stepsPerSec = (rpm / 60) * ringCount;
-    ringPhase = (ringPhase + stepsPerSec * dt) % ringCount;
-    activeRing = Math.floor(ringPhase);
+    // ---- Tunnel stepping (GUARDED) ----
+    if (Number.isFinite(ringCount) && ringCount > 0 && Number.isFinite(maxR) && maxR > 0) {
+      const stepsPerSec = (rpm / 60) * ringCount;
+      ringPhase = (ringPhase + stepsPerSec * dt) % ringCount;
+      activeRing = Math.floor(ringPhase);
 
-    // Tunnel scale swell + DRAW ONLY WHEN NEEDED
-    if (bgTunnelOn) {
-      const swell = 1 + 0.05 * (energy * INT);
-      tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
+      if (bgTunnelOn) {
+        const swell = 1 + 0.05 * (energy * INT);
+        tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
 
-      const ringChanged = (activeRing !== lastActiveRing);
-      const popHot = (pop > 0.22);              // redraw if strobe pop is intense
-      const timeKick = (now - tunnelLastDraw > 90); // occasional refresh
+        const ringChanged = (activeRing !== lastActiveRing);
+        const popHot = (pop > 0.22);
+        const timeKick = (now - tunnelLastDraw > 90);
 
-      if (ringChanged || popHot || timeKick) {
-        drawTunnel(rpm, energy * INT, pop);
-        lastActiveRing = activeRing;
-        tunnelLastDraw = now;
+        if (ringChanged || popHot || timeKick) {
+          drawTunnel(energy * INT, pop);
+          lastActiveRing = activeRing;
+          tunnelLastDraw = now;
+        }
+      } else {
+        tunnel.style.transform = `translate(-50%, -50%)`;
       }
-    } else {
-      tunnel.style.transform = `translate(-50%, -50%)`;
     }
 
     // Aurora throttled updates
@@ -704,4 +690,176 @@
         const ah3 = base + 90 + 120 * (1 - tri);
 
         const aa1 = (0.10 + 0.28 * e) + pop * 0.14;
-        const aa2 =
+        const aa2 = (0.08 + 0.22 * e) + pop * 0.12;
+        const aa3 = (0.06 + 0.18 * e) + pop * 0.10;
+
+        const ax1 = 25 + 18 * Math.sin(t * (0.22 + 0.5 * e));
+        const ay1 = 35 + 10 * Math.cos(t * (0.18 + 0.4 * e));
+        const ax2 = 70 + 15 * Math.cos(t * (0.17 + 0.55 * e));
+        const ay2 = 55 + 12 * Math.sin(t * (0.20 + 0.35 * e));
+        const ax3 = 55 + 22 * Math.sin(t * (0.14 + 0.45 * e));
+        const ay3 = 25 + 16 * Math.cos(t * (0.16 + 0.42 * e));
+
+        bgAurora.style.opacity = "1";
+        bgAurora.style.setProperty("--ah1", ah1.toFixed(1));
+        bgAurora.style.setProperty("--ah2", ah2.toFixed(1));
+        bgAurora.style.setProperty("--ah3", ah3.toFixed(1));
+        bgAurora.style.setProperty("--aa1", aa1.toFixed(3));
+        bgAurora.style.setProperty("--aa2", aa2.toFixed(3));
+        bgAurora.style.setProperty("--aa3", aa3.toFixed(3));
+        bgAurora.style.setProperty("--ax1", ax1.toFixed(1) + "%");
+        bgAurora.style.setProperty("--ay1", ay1.toFixed(1) + "%");
+        bgAurora.style.setProperty("--ax2", ax2.toFixed(1) + "%");
+        bgAurora.style.setProperty("--ay2", ay2.toFixed(1) + "%");
+        bgAurora.style.setProperty("--ax3", ax3.toFixed(1) + "%");
+        bgAurora.style.setProperty("--ay3", ay3.toFixed(1) + "%");
+
+        const bright = 1 + 0.85 * pop;
+        bgAurora.style.filter = `saturate(1.2) contrast(1.05) brightness(${bright.toFixed(2)})`;
+      } else {
+        bgAurora.style.opacity = "0";
+      }
+    }
+
+    // Stars
+    if (bgStarsOn) {
+      ctx.fillStyle = "rgba(0,0,0,0.16)";
+      ctx.fillRect(0, 0, W, H);
+
+      const cx = W * 0.5;
+      const cy = H * 0.5;
+
+      const breathe = 0.6 + 0.4 * Math.sin(t * 1.2);
+      const accel = (0.6 + 7.0 * (energy * energy) + 8.0 * (energy * energy * energy)) * INT;
+      const warp = accel * breathe;
+
+      for (const s of starsList) {
+        s.tw += dt * (0.9 + 2.4 * energy) * (0.6 + s.z);
+        const twinkle = 0.60 + 0.40 * Math.sin(s.tw);
+
+        const dx = s.x - cx;
+        const dy = s.y - cy;
+
+        const swirl = 0.0040 * warp;
+        const rx = dx * Math.cos(swirl) - dy * Math.sin(swirl);
+        const ry = dx * Math.sin(swirl) + dy * Math.cos(swirl);
+
+        const denom = (160 + 520 * s.z);
+        const push = (warp * 220) * dt;
+        s.x += (rx / denom) * push;
+        s.y += (ry / denom) * push;
+
+        if (s.x < -12) s.x = W + 12;
+        if (s.x > W + 12) s.x = -12;
+        if (s.y < -12) s.y = H + 12;
+        if (s.y > H + 12) s.y = -12;
+
+        const size  = s.r * (0.55 + 0.65 * (energy * INT)) * (0.85 + 0.55 * twinkle);
+        const alpha = (0.10 + 0.35 * (energy * INT)) * (0.55 + 0.70 * twinkle);
+
+        const hh = (hue + 110 * (s.z - 0.5)) % 360;
+        ctx.fillStyle = `hsla(${(hh+360)%360}, 100%, 78%, 1)`;
+
+        ctx.globalAlpha = Math.min(1, alpha * 0.45);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, size * 1.55, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = Math.min(1, alpha);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, Math.max(0.35, size * 0.60), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      ctx.clearRect(0, 0, W, H);
+    }
+  }
+
+  // ----- UI EVENTS -----
+  slider.addEventListener("input", () => {
+    cancelCruise();
+    autoRamp = false;
+    setTargetRPM(Number(slider.value));
+    writeTargetUI(targetRPM);
+  });
+
+  toggleBtn.addEventListener("click", () => setRunning(!running));
+  resetBtn.addEventListener("click", resetAll);
+  brakeBtn.addEventListener("click", brake);
+  cruiseBtn.addEventListener("click", cruise);
+  modeBtn.addEventListener("click", nextMode);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === " ") { e.preventDefault(); setRunning(!running); return; }
+    if (e.key === "m" || e.key === "M") { nextMode(); return; }
+    if (e.key === "r" || e.key === "R") { resetAll(); return; }
+    if (e.key === "b" || e.key === "B") { brake(); return; }
+    if (e.key === "c" || e.key === "C") { cruise(); return; }
+
+    if (e.key === "g" || e.key === "G") { bgOn = !bgOn; return; }
+    if (e.key === "a" || e.key === "A") { bgAuroraOn = !bgAuroraOn; return; }
+    if (e.key === "t" || e.key === "T") { bgTunnelOn = !bgTunnelOn; return; }
+    if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; return; }
+    if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; return; }
+
+    if (e.key === "ArrowUp")   { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
+    if (e.key === "ArrowDown") { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
+  });
+
+  // ----- ANIMATION LOOP -----
+  function tick(now) {
+    const dt = (now - last) / 1000;
+    last = now;
+    t += dt;
+
+    if (running) {
+      if (autoRamp) {
+        cancelCruise();
+        const rampRate = MAX_RPM / 10;
+        setTargetRPM(targetRPM + rampRate * dt);
+        if (targetRPM >= MAX_RPM) autoRamp = false;
+      }
+
+      const targetSpeed = rpmToDeg(targetRPM);
+
+      const accel = 360;
+      const decel = 900;
+      const maxAccel = (targetSpeed < speed) ? decel : accel;
+
+      const delta = targetSpeed - speed;
+      const step = Math.sign(delta) * Math.min(Math.abs(delta), maxAccel * dt);
+      speed += step;
+
+      angle = (angle + speed * dt) % 360;
+
+      if (modes[modeIndex].name !== "Strobe Invert (Beat)") {
+        spinner.style.transform = `rotate(${angle}deg)`;
+      }
+
+      writeRPMUI(speed / 6);
+      modes[modeIndex].update?.(dt);
+    }
+
+    updateBackground(dt, now);
+
+    if (now - uiLastWrite > 50) {
+      uiLastWrite = now;
+      writeTargetUI(targetRPM);
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // init
+  applyMode(modeIndex);
+  resizeTunnel();
+  rebuildBaseTunnel();
+  resizeStars();
+  resetAll();
+  requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>
