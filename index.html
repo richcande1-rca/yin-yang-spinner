@@ -609,8 +609,8 @@
         const th2 = (hue + 220 - 180 * tri) % 360;
         const ta = (0.03 + 0.12 * e) + pop * 0.08;
 
-        const tcx = 50 + 2.6 * Math.sin(t * (0.55 + 0.9 * e));
-        const tcy = 45 + 2.1 * Math.cos(t * (0.48 + 0.8 * e));
+       const tcx = 50;
+const tcy = 45;
 
         // glow band position: OUTER -> INNER
         // glowPos goes 0..GLOW_STEPS; map to percent 92% -> 8% (avoid extremes)
