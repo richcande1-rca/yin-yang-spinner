@@ -19,18 +19,16 @@
   }
 
   /* ----- BACKGROUND LAYERS ----- */
-  /* IMPORTANT: bgTunnel is NOT in this group (because inset:0 forces full-screen rectangle) */
   #bgAurora, #bgShade {
     position: fixed;
     inset: 0;
     pointer-events: none;
   }
 
-  /* Explicit layer stack */
   #bgAurora { z-index: 0; }
   #bgTunnel { z-index: 1; }
-  #bgShade  { z-index: 2; }      /* dark vignette */
-  #stars    { z-index: 3; }      /* stars ABOVE vignette */
+  #bgShade  { z-index: 2; }
+  #stars    { z-index: 3; }
   #container{ z-index: 4; position: relative; }
 
   #bgAurora{
@@ -49,10 +47,10 @@
     will-change: background, filter;
   }
 
-  /* Tunnel is a big centered square so rotation never shows “rectangle corners” */
+  /* Tunnel is a big centered square so effects never show “rectangle corners” */
   #bgTunnel{
     position: fixed;
-    inset: auto;            /* cancels inset:0 behavior */
+    inset: auto;
     left: 50%;
     top: 45%;
     width: 180vmax;
@@ -62,11 +60,28 @@
     pointer-events: none;
 
     opacity: 1;
+
+    /*
+      LAYER 1 (base): your original repeating radial lines (unchanged look)
+      LAYER 2 (glow): a bright band that steps OUTER -> INNER to fake forward motion
+      LAYER 3 (tail): a weaker trailing band for “afterglow”
+    */
     background:
+      radial-gradient(circle at var(--tcx, 50%) var(--tcy, 45%),
+        hsla(var(--tg, 200), 100%, 70%, 0.00) calc((var(--gp, 88) - 6) * 1%),
+        hsla(var(--tg, 200), 100%, 72%, var(--ga, 0.30)) calc((var(--gp, 88) + 0) * 1%),
+        hsla(var(--tg, 200), 100%, 70%, 0.00) calc((var(--gp, 88) + 10) * 1%)
+      ),
+      radial-gradient(circle at var(--tcx, 50%) var(--tcy, 45%),
+        hsla(var(--tg2, 210), 100%, 68%, 0.00) calc((var(--gp, 88) + var(--gt, 6) - 6) * 1%),
+        hsla(var(--tg2, 210), 100%, 68%, var(--ga2, 0.12)) calc((var(--gp, 88) + var(--gt, 6) + 0) * 1%),
+        hsla(var(--tg2, 210), 100%, 68%, 0.00) calc((var(--gp, 88) + var(--gt, 6) + 12) * 1%)
+      ),
       repeating-radial-gradient(circle at var(--tcx, 50%) var(--tcy, 45%),
         hsla(var(--th1, 200), 100%, 55%, var(--ta, 0.10)) 0px,
         hsla(var(--th2, 320), 100%, 55%, var(--ta, 0.06)) 10px,
         hsla(var(--th1, 200), 100%, 55%, 0.00) 22px);
+
     mix-blend-mode: screen;
     will-change: background, filter, transform;
   }
@@ -82,7 +97,7 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    mix-blend-mode: screen;  /* makes stars pop over shade/aurora/tunnel */
+    mix-blend-mode: screen;
   }
 
   /* ----- SPINNER ----- */
@@ -401,6 +416,10 @@
 
     writeTargetUI(targetRPM);
     writeRPMUI(0);
+
+    // reset tunnel chase
+    glowPos = 0;
+    glowAcc = 0;
   }
 
   // ----- SPINNER MODES -----
@@ -481,8 +500,12 @@
   let bgLastWrite = 0;
   let bgPhase = 0;
 
-  // Tunnel vortex rotation
-  let tunnelRot = 0;
+  // --- Tunnel “forward motion” chase ---
+  // glowPos is a float position [0..GLOW_STEPS)
+  let glowPos = 0;
+  let glowAcc = 0;
+  const GLOW_STEPS = 30;             // how many “rings” in the chase illusion (more = smoother)
+  const GLOW_PER_REV = GLOW_STEPS;   // one full chase per rotation (synced to RPM)
 
   // Starfield
   let W = 0, H = 0, DPR = 1;
@@ -525,6 +548,12 @@
     const rpm = speed / 6;
     const energy = clamp(rpm / 600, 0, 1);
     const e = energy * INT;
+
+    // advance tunnel chase (outer -> inner) synced to rpm
+    // RPM -> rotations per second = rpm/60
+    // steps per second = (rpm/60) * GLOW_PER_REV
+    const sps = (rpm / 60) * GLOW_PER_REV;
+    glowPos = (glowPos + sps * dt) % GLOW_STEPS;
 
     if (now - bgLastWrite > 50) {
       bgLastWrite = now;
@@ -583,12 +612,29 @@
         const tcx = 50 + 2.6 * Math.sin(t * (0.55 + 0.9 * e));
         const tcy = 45 + 2.1 * Math.cos(t * (0.48 + 0.8 * e));
 
+        // glow band position: OUTER -> INNER
+        // glowPos goes 0..GLOW_STEPS; map to percent 92% -> 8% (avoid extremes)
+        const gi = Math.floor(glowPos);
+        const pct = 92 - (gi / (GLOW_STEPS - 1)) * 84;
+
+        // glow alpha tied to energy + strobe pop
+        const ga  = (0.10 + 0.35 * e) + pop * 0.20;
+        const ga2 = (0.05 + 0.18 * e) + pop * 0.10;
+
         bgTunnel.style.opacity = "1";
         bgTunnel.style.setProperty("--th1", th1.toFixed(1));
         bgTunnel.style.setProperty("--th2", th2.toFixed(1));
         bgTunnel.style.setProperty("--ta", ta.toFixed(3));
         bgTunnel.style.setProperty("--tcx", tcx.toFixed(2) + "%");
         bgTunnel.style.setProperty("--tcy", tcy.toFixed(2) + "%");
+
+        // glow vars
+        bgTunnel.style.setProperty("--gp", pct.toFixed(2));
+        bgTunnel.style.setProperty("--gt", (100 / GLOW_STEPS).toFixed(2)); // tail spacing
+        bgTunnel.style.setProperty("--tg",  (th1).toFixed(1));
+        bgTunnel.style.setProperty("--tg2", (th2).toFixed(1));
+        bgTunnel.style.setProperty("--ga",  ga.toFixed(3));
+        bgTunnel.style.setProperty("--ga2", ga2.toFixed(3));
       } else {
         bgTunnel.style.opacity = "0";
       }
@@ -598,14 +644,11 @@
       if (bgTunnelOn) bgTunnel.style.filter = `saturate(1.25) contrast(1.10) brightness(${bright.toFixed(2)})`;
     }
 
+    // IMPORTANT CHANGE:
+    // tunnel no longer rotates — only gentle “swell” based on energy
     if (bgTunnelOn) {
-      const spin = (18 + 320 * (energy * energy)) * INT;
-      tunnelRot = (tunnelRot + spin * dt) % 360;
       const swell = 1 + 0.06 * (energy * INT);
-
-      /* keep translate when rotating */
-      bgTunnel.style.transform =
-        `translate(-50%, -50%) rotate(${tunnelRot.toFixed(2)}deg) scale(${swell.toFixed(4)})`;
+      bgTunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
     } else {
       bgTunnel.style.transform = "translate(-50%, -50%)";
     }
