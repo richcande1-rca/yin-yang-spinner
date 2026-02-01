@@ -776,3 +776,63 @@
     if (e.key === "a" || e.key === "A") { bgAuroraOn = !bgAuroraOn; return; }
     if (e.key === "t" || e.key === "T") { bgTunnelOn = !bgTunnelOn; return; }
     if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; return; }
+    if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; return; }
+
+    if (e.key === "ArrowUp") { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
+    if (e.key === "ArrowDown") { cancelCruise(); autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
+  });
+
+  // ----- ANIMATION LOOP -----
+  function tick(now) {
+    const dt = (now - last) / 1000;
+    last = now;
+    t += dt;
+
+    if (running) {
+      if (autoRamp) {
+        cancelCruise();
+        const rampRate = MAX_RPM / 10;
+        setTargetRPM(targetRPM + rampRate * dt);
+        if (targetRPM >= MAX_RPM) autoRamp = false;
+      }
+
+      const targetSpeed = rpmToDeg(targetRPM);
+
+      const accel = 360;
+      const decel = 900;
+      const maxAccel = (targetSpeed < speed) ? decel : accel;
+
+      const delta = targetSpeed - speed;
+      const step = Math.sign(delta) * Math.min(Math.abs(delta), maxAccel * dt);
+      speed += step;
+
+      angle = (angle + speed * dt) % 360;
+
+      if (modes[modeIndex].name !== "Strobe Invert (Beat)") {
+        spinner.style.transform = `rotate(${angle}deg)`;
+      }
+
+      writeRPMUI(speed / 6);
+      modes[modeIndex].update?.(dt);
+    }
+
+    updateBackground(dt, now);
+
+    if (now - uiLastWrite > 50) {
+      uiLastWrite = now;
+      writeTargetUI(targetRPM);
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // init
+  applyMode(modeIndex);
+  resizeTunnel();
+  resizeStars();
+  resetAll();
+  requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>
