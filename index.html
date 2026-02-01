@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (Factory Loaded)</title>
+<title>Yin Yang — Multi-Mode Spinner (Factory Loaded v2)</title>
 
 <style>
   html, body {
@@ -39,9 +39,9 @@
       radial-gradient(900px 700px at var(--ax3, 55%) var(--ay3, 25%),
         hsla(var(--ah3, 40), 100%, 55%, var(--aa3, 0.14)) 0%,
         hsla(var(--ah2, 260), 100%, 50%, 0.00) 65%);
-    filter: saturate(1.15) contrast(1.05);
+    /* filter is set dynamically to add strobe brightness punch */
     mix-blend-mode: screen;
-    will-change: background;
+    will-change: background, filter;
   }
 
   /* Chromatic tunnel rings */
@@ -52,9 +52,9 @@
         hsla(var(--th1, 200), 100%, 55%, var(--ta, 0.10)) 0px,
         hsla(var(--th2, 320), 100%, 55%, var(--ta, 0.06)) 10px,
         hsla(var(--th1, 200), 100%, 55%, 0.00) 22px);
-    filter: saturate(1.2) contrast(1.1);
+    /* filter is set dynamically to add strobe brightness punch */
     mix-blend-mode: screen;
-    will-change: background;
+    will-change: background, filter;
   }
 
   /* Dark vignette to keep it readable and “deep” */
@@ -496,7 +496,7 @@
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
     // Adaptive star count (keeps it smooth)
-    const base = Math.floor((W * H) / 22000); // density
+    const base = Math.floor((W * H) / 22000);
     const count = clamp(base, 60, 170);
     starsList = [];
     for (let i = 0; i < count; i++) {
@@ -532,26 +532,26 @@
       bgPhase += dt * rate;
       const tri = 1 - Math.abs(((bgPhase % 1) * 2) - 1);
 
-      // A gentle strobe pop (optional)
+      // Stronger strobe pulse (visible)
       let pop = 0;
       if (bgStrobe) {
-        const beatHz = 1.0 + 9.0 * e;
+        const beatHz = 1.2 + 10.5 * e;
         const st = Math.sin(t * Math.PI * 2 * beatHz);
-        if (st > 0.78) pop = 1;
+        pop = Math.max(0, (st - 0.65) / 0.35);
+        pop = pop * pop;
       }
 
       // Aurora params
       if (bgAuroraOn) {
-        const base = (hue + 30) % 360;
+        const base = (hue + 30 + t * 8) % 360; // slow drift even at low RPM
         const ah1 = base + 220 * tri;
         const ah2 = base + 180 - 220 * tri;
         const ah3 = base + 90 + 120 * (1 - tri);
 
-        const aa1 = (0.10 + 0.28 * e) + pop * 0.10;
-        const aa2 = (0.08 + 0.22 * e) + pop * 0.08;
-        const aa3 = (0.06 + 0.18 * e) + pop * 0.06;
+        const aa1 = (0.10 + 0.28 * e) + pop * 0.14;
+        const aa2 = (0.08 + 0.22 * e) + pop * 0.12;
+        const aa3 = (0.06 + 0.18 * e) + pop * 0.10;
 
-        // drifting anchor points
         const ax1 = 25 + 18 * Math.sin(t * (0.22 + 0.5 * e));
         const ay1 = 35 + 10 * Math.cos(t * (0.18 + 0.4 * e));
         const ax2 = 70 + 15 * Math.cos(t * (0.17 + 0.55 * e));
@@ -580,7 +580,7 @@
       if (bgTunnelOn) {
         const th1 = (hue + 40 + 180 * tri) % 360;
         const th2 = (hue + 220 - 180 * tri) % 360;
-        const ta = (0.03 + 0.12 * e) + pop * 0.05;
+        const ta = (0.03 + 0.12 * e) + pop * 0.08;
 
         bgTunnel.style.opacity = "1";
         bgTunnel.style.setProperty("--th1", th1.toFixed(1));
@@ -589,29 +589,29 @@
       } else {
         bgTunnel.style.opacity = "0";
       }
+
+      // Global strobe brightness punch (very visible)
+      const bright = 1 + 0.85 * pop; // up to ~1.85x
+      if (bgAuroraOn) bgAurora.style.filter = `saturate(1.2) contrast(1.05) brightness(${bright.toFixed(2)})`;
+      if (bgTunnelOn) bgTunnel.style.filter = `saturate(1.25) contrast(1.10) brightness(${bright.toFixed(2)})`;
     }
 
     // Starfield warp (draw every frame, but very light)
     if (bgStarsOn) {
-      ctx.clearRect(0, 0, W, H);
+      // softer fade so stars build up brighter
+      ctx.fillStyle = "rgba(0,0,0,0.10)";
+      ctx.fillRect(0, 0, W, H);
 
       const cx = W * 0.5;
       const cy = H * 0.45;
 
-      // Warp strength increases with RPM; also slight "reverse breathe"
       const breathe = 0.6 + 0.4 * Math.sin(t * 1.2);
       const warp = (0.4 + 2.2 * e) * breathe;
 
-      // Fade layer so trails accumulate softly (instead of full clear)
-      ctx.fillStyle = "rgba(0,0,0,0.22)";
-      ctx.fillRect(0, 0, W, H);
-
       for (const s of starsList) {
-        // Drift depth oscillation for shimmer
         s.tw += dt * (0.8 + 2.0 * e) * (0.6 + s.z);
         const twinkle = 0.55 + 0.45 * Math.sin(s.tw);
 
-        // Move outward from center (warp) + slight rotation swirl
         const dx = s.x - cx;
         const dy = s.y - cy;
 
@@ -622,22 +622,31 @@
         s.x += (rx / (220 + 380 * s.z)) * (warp * 60) * dt;
         s.y += (ry / (220 + 380 * s.z)) * (warp * 60) * dt;
 
-        // Wrap around edges
         if (s.x < -10) s.x = W + 10;
         if (s.x > W + 10) s.x = -10;
         if (s.y < -10) s.y = H + 10;
         if (s.y > H + 10) s.y = -10;
 
-        const size = s.r * (0.8 + 1.2 * e) * (0.7 + 0.6 * twinkle);
-        const alpha = (0.08 + 0.25 * e) * (0.5 + 0.6 * twinkle);
+        // Brighter + bigger
+        const size  = s.r * (1.15 + 1.65 * e) * (0.85 + 0.75 * twinkle);
+        const alpha = (0.18 + 0.55 * e) * (0.65 + 0.75 * twinkle);
 
-        // Slight colorization based on hue + depth
         const hh = (hue + 120 * (s.z - 0.5)) % 360;
-        ctx.fillStyle = `hsla(${(hh+360)%360}, 100%, 75%, ${alpha.toFixed(3)})`;
+        ctx.fillStyle = `hsla(${(hh+360)%360}, 100%, 75%, 1)`;
 
+        // glow
+        ctx.globalAlpha = Math.min(1, alpha * 0.55);
         ctx.beginPath();
-        ctx.arc(s.x, s.y, size, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, size * 2.2, 0, Math.PI * 2);
         ctx.fill();
+
+        // core
+        ctx.globalAlpha = Math.min(1, alpha);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, Math.max(0.6, size * 0.85), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 1;
       }
     } else {
       ctx.clearRect(0, 0, W, H);
@@ -708,7 +717,6 @@
 
       angle = (angle + speed * dt) % 360;
 
-      // Most modes use rotation only; strobe mode overrides transform
       if (modes[modeIndex].name !== "Strobe Invert (Beat)") {
         spinner.style.transform = `rotate(${angle}deg)`;
       }
@@ -717,10 +725,8 @@
       modes[modeIndex].update?.(dt);
     }
 
-    // Background FX update
     updateBackground(dt, now);
 
-    // UI target updates (~20fps)
     if (now - uiLastWrite > 50) {
       uiLastWrite = now;
       writeTargetUI(targetRPM);
@@ -738,4 +744,3 @@
 
 </body>
 </html>
-
