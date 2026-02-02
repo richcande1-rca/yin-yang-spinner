@@ -468,10 +468,16 @@
 
   function syncBgButtons() {
     btnBG.classList.toggle("off", !bgOn);
-    btnAurora.classList.toggle("off", !(bgOn && bgAuroraOn));
-    btnTunnel.classList.toggle("off", !(bgOn && bgTunnelOn));
-    btnStars.classList.toggle("off",  !(bgOn && bgStarsOn));
-    btnStrobe.classList.toggle("off", !(bgOn && bgStrobe));
+
+    const effA = bgOn && bgAuroraOn;
+    const effT = bgOn && bgTunnelOn;
+    const effS = bgOn && bgStarsOn;
+    const effB = bgOn && bgStrobe;
+
+    btnAurora.classList.toggle("off", !effA);
+    btnTunnel.classList.toggle("off", !effT);
+    btnStars.classList.toggle("off",  !effS);
+    btnStrobe.classList.toggle("off", !effB);
   }
 
   btnBG.addEventListener("click", () => { bgOn = !bgOn; syncBgButtons(); });
@@ -486,6 +492,9 @@
   // Starfield
   let W = 0, H = 0, DPR = 1;
   let starsList = [];
+
+  // Trail cleanup (prevents fade-floor / "done" look)
+  let trailDebt = 0;
 
   function resizeStars() {
     DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -510,6 +519,9 @@
         tw: Math.random() * Math.PI * 2
       });
     }
+
+    // reset trail debt on resize
+    trailDebt = 0;
   }
 
   // ----- TUNNEL CANVAS -----
@@ -635,8 +647,10 @@
     }
   }
 
-  // ----- HYPERSPACE STAR HELPERS -----
+  // ----- HYPERSPACE STAR HELPERS (STATE SAFE) -----
   function drawStarDot(x, y, size, alpha, hh) {
+    ctx.save();
+
     ctx.fillStyle = `hsla(${hh},100%,78%,1)`;
 
     ctx.globalAlpha = Math.min(1, alpha * 0.40);
@@ -648,9 +662,13 @@
     ctx.beginPath();
     ctx.arc(x, y, Math.max(0.5, size * 0.70), 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
   }
 
   function drawStarStreak(x, y, vx, vy, len, width, alpha, hh) {
+    ctx.save();
+
     const mag = Math.hypot(vx, vy) || 1;
     const ux = vx / mag;
     const uy = vy / mag;
@@ -666,6 +684,8 @@
     ctx.moveTo(x, y);
     ctx.lineTo(x2, y2);
     ctx.stroke();
+
+    ctx.restore();
   }
 
   function updateBackground(dt, now) {
@@ -691,29 +711,27 @@
       pop = pop * pop;
     }
 
-    // ---- Tunnel stepping (REVERSED) ----
-    if (Number.isFinite(ringCount) && ringCount > 0 && Number.isFinite(maxR) && maxR > 0) {
+    // ---- Tunnel stepping (skip all math when tunnel is off) ----
+    if (bgTunnelOn && Number.isFinite(ringCount) && ringCount > 0 && Number.isFinite(maxR) && maxR > 0) {
       const stepsPerSec = (rpm / 60) * ringCount;
       ringPhase = (ringPhase - stepsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
       activeRing = Math.floor(ringPhase);
 
-      if (bgTunnelOn) {
-        const swell = 1 + 0.05 * (energy * INT);
-        tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
+      const swell = 1 + 0.05 * (energy * INT);
+      tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
 
-        const ringChanged = (activeRing !== lastActiveRing);
-        const popHot = (pop > 0.22);
-        const timeKick = (now - tunnelLastDraw > 90);
+      const ringChanged = (activeRing !== lastActiveRing);
+      const popHot = (pop > 0.22);
+      const timeKick = (now - tunnelLastDraw > 90);
 
-        if (ringChanged || popHot || timeKick) {
-          drawTunnel(energy * INT, pop);
-          lastActiveRing = activeRing;
-          tunnelLastDraw = now;
-        }
-      } else {
-        tunnel.style.transform = `translate(-50%, -50%)`;
+      if (ringChanged || popHot || timeKick) {
+        drawTunnel(energy * INT, pop);
+        lastActiveRing = activeRing;
+        tunnelLastDraw = now;
       }
+    } else {
+      tunnel.style.transform = `translate(-50%, -50%)`;
     }
 
     // Aurora throttled updates
@@ -762,35 +780,43 @@
       }
     }
 
-    // ----- STARS + HYPERSPACE (NO GHOST LOCK) -----
+    // ----- STARS + HYPERSPACE (FIXED: STATE RESET + TRAIL CLEANUP) -----
     if (bgStarsOn) {
       const cx = W * 0.5;
       const cy = H * 0.5;
 
-      // energy 0..1
       const energyS = clamp((speed / 6) / 600, 0, 1);
-
-      // hyperspace engagement 0..1 (smooth)
       const hyper = clamp((energyS - 0.28) / 0.72, 0, 1);
       const hyper2 = hyper * hyper;
 
-      // If NOT in hyperspace, keep it crisp: clear and draw dots only.
       const crispMode = (hyper < 0.06);
 
+      // HARD RESET canvas state every frame
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
 
       if (crispMode) {
-        // Full clear so ghosts can't accumulate
+        trailDebt = 0;
         ctx.clearRect(0, 0, W, H);
       } else {
-        // Trails only while hyperspace is active
-        const fade = (0.02 + 0.06 * hyper2);  // 0.02..0.08
-        ctx.fillStyle = `rgba(0,0,0,${fade})`;
-        ctx.fillRect(0, 0, W, H);
+        // slightly stronger fade to avoid "plateau"
+        const fade = (0.04 + 0.10 * hyper2);  // 0.04..0.14
+        trailDebt += fade;
+
+        // occasional hard wipe guarantees no dim ghosts
+        if (trailDebt > 1.25) {
+          ctx.clearRect(0, 0, W, H);
+          trailDebt = 0;
+        } else {
+          ctx.fillStyle = `rgba(0,0,0,${fade})`;
+          ctx.fillRect(0, 0, W, H);
+        }
       }
 
       // Additive stars draw
       ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 1;
 
       const breathe = 0.6 + 0.4 * Math.sin(t * 1.2);
       const accel = (0.9 + 6.5 * (energyS * energyS) + 8.0 * (energyS * energyS * energyS)) * INT;
@@ -811,7 +837,6 @@
         const denom = (160 + 520 * s.z);
         const push = (warp * 220) * dt;
 
-        // velocity vector (approx)
         const vx = (rx / denom) * push;
         const vy = (ry / denom) * push;
 
@@ -824,30 +849,27 @@
         if (s.y > H + 18) s.y = -18;
 
         const size  = s.r * (0.95 + 0.70 * (energyS * INT)) * (0.85 + 0.65 * twinkle);
-
-        // Strong minimum brightness always
         const alpha = (0.45 + 0.45 * (energyS * INT)) * (0.70 + 0.75 * twinkle);
 
         const hh = (hue + 110 * (s.z - 0.5)) % 360;
         const hhn = (hh + 360) % 360;
 
-        // Streaks only in hyperspace mode
         if (!crispMode) {
           const speedPx = Math.hypot(vx, vy);
           const len = (10 + 150 * hyper2) * (0.35 + 0.95 * s.z) * (0.4 + 2.6 * speedPx);
           const w   = (0.8 + 2.8 * hyper) * (0.35 + 0.85 * s.z);
 
-          ctx.globalAlpha = Math.min(1, alpha * (0.55 + 0.95 * hyper));
-          drawStarStreak(s.x, s.y, vx, vy, len, w, ctx.globalAlpha, hhn);
+          drawStarStreak(s.x, s.y, vx, vy, len, w, Math.min(1, alpha * (0.55 + 0.95 * hyper)), hhn);
         }
 
-        // Always draw dot core
         drawStarDot(s.x, s.y, size, alpha, hhn);
       }
 
+      // Restore defaults
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
     } else {
+      trailDebt = 0;
       ctx.clearRect(0, 0, W, H);
     }
 
@@ -876,7 +898,7 @@
     if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; syncBgButtons(); return; }
     if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; syncBgButtons(); return; }
 
-    if (e.key === "x" || e.key === "X") { ctx.clearRect(0,0,W,H); return; }
+    if (e.key === "x" || e.key === "X") { trailDebt = 0; ctx.clearRect(0,0,W,H); return; }
 
     if (e.key === "ArrowUp")   { autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
     if (e.key === "ArrowDown") { autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
@@ -891,8 +913,12 @@
 
   // ----- ANIMATION LOOP -----
   function tick(now) {
-    const dt = (now - last) / 1000;
+    let dt = (now - last) / 1000;
     last = now;
+
+    // Clamp dt so a hiccup/tab-switch doesn't "jump" the sim
+    dt = Math.min(dt, 0.05);
+
     t += dt;
 
     if (running) {
