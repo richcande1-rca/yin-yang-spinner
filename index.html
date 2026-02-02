@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.3 tweaks: tron tunnel + smoother rings + calmer stars + BW/noBG start)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.4 tunnel half-speed)</title>
 
 <style>
   html, body {
@@ -473,7 +473,7 @@
   function nextMode(){ applyMode(modeIndex + 1); }
 
   // ----- BACKGROUND SYSTEM -----
-  let bgOn = false;         // start OFF (per your request)
+  let bgOn = false;         // start OFF
   let bgAuroraOn = false;
   let bgTunnelOn = false;
   let bgStarsOn = false;
@@ -556,8 +556,11 @@
   let ringCount = 0;
   let maxR = 0;
 
-  let ringPhase = 0;        // FLOAT phase for smooth flow
+  let ringPhase = 0;        // FLOAT phase
   let tunnelLastDraw = 0;
+
+  // NEW: tunnel runs at half speed vs RPM
+  const TUNNEL_GEAR = 0.5;  // 1.0 = matched, 0.5 = half speed
 
   const baseTunnel = document.createElement("canvas");
   const bctx = baseTunnel.getContext("2d", { alpha: true });
@@ -602,7 +605,7 @@
     const cx = TW * 0.5;
     const cy = TH * 0.5;
 
-    const baseAlpha = 0.085;   // slightly calmer base
+    const baseAlpha = 0.085;
     const baseWidth = 2.1;
 
     bctx.lineCap = "round";
@@ -621,13 +624,11 @@
     }
   }
 
-  // ---- TRON TUNNEL (smooth head position) ----
   function drawTunnel(energy, pop) {
     if (baseDirty) rebuildBaseTunnel();
 
     tctx.clearRect(0, 0, TW, TH);
 
-    // base
     const baseGain = 0.70 + 0.55 * energy;
     tctx.globalAlpha = clamp(baseGain, 0.60, 1.0);
     tctx.drawImage(baseTunnel, 0, 0);
@@ -636,7 +637,6 @@
     const cx = TW * 0.5;
     const cy = TH * 0.5;
 
-    // TRON palette
     const hh1 = normHue(hue + 185);
     const hh2 = normHue(hue + 315);
 
@@ -648,20 +648,17 @@
 
     tctx.lineCap = "round";
 
-    // continuous “flowing” head ring position (no floor)
     const rHead  = maxR - ringPhase * ringSpacing;
     const rTail1 = rHead - ringSpacing;
     const rTail2 = rHead - 2 * ringSpacing;
 
     if (rHead > 0) {
-      // Head: cyan/blue
       tctx.strokeStyle = `hsla(${hh1},100%,72%,${Math.min(1, hiAlpha).toFixed(3)})`;
       tctx.lineWidth = hiWidth;
       tctx.beginPath();
       tctx.arc(cx, cy, rHead, 0, Math.PI * 2);
       tctx.stroke();
 
-      // Inner “spark” ring (thin)
       tctx.strokeStyle = `rgba(255,255,255,${Math.min(1, (0.35 + 0.75 * pop + 0.25 * energy)).toFixed(3)})`;
       tctx.lineWidth = Math.max(1.2, hiWidth * 0.28);
       tctx.beginPath();
@@ -670,7 +667,6 @@
     }
 
     if (rTail1 > 0) {
-      // Tail 1: icy cyan
       tctx.strokeStyle = `hsla(${hh1},100%,74%,${Math.min(1, tailAlpha).toFixed(3)})`;
       tctx.lineWidth = tailWidth;
       tctx.beginPath();
@@ -679,7 +675,6 @@
     }
 
     if (rTail2 > 0) {
-      // Tail 2: magenta accent (subtle)
       tctx.strokeStyle = `hsla(${hh2},100%,72%,${Math.min(1, tailAlpha * 0.55).toFixed(3)})`;
       tctx.lineWidth = tailWidth * 0.9;
       tctx.beginPath();
@@ -754,18 +749,17 @@
       pop = pop * pop;
     }
 
-    // ---- tunnel ----
+    // ---- tunnel (HALF SPEED) ----
     if (bgTunnelOn && Number.isFinite(ringCount) && ringCount > 0 && Number.isFinite(maxR) && maxR > 0) {
-      const stepsPerSec = (rpm / 60) * ringCount;
+      const stepsPerSec = (rpm / 60) * ringCount * TUNNEL_GEAR;  // <<<<<< HERE
       ringPhase = (ringPhase - stepsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
 
       const swell = 1 + 0.05 * (energy * INT);
       tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
 
-      // smoother redraw: time-based cadence, plus pop spikes
       const popHot = (pop > 0.18);
-      const timeKick = (now - tunnelLastDraw > 55); // ~18fps max; stable at high rpm
+      const timeKick = (now - tunnelLastDraw > 55);
 
       if (popHot || timeKick) {
         drawTunnel(energy * INT, pop);
@@ -864,8 +858,7 @@
 
       const pad = 60;
 
-      // calmer at high RPM: draw fewer stars per frame (subsample)
-      const drawStride = 1 + Math.floor(hyper2 * 2.6); // 1..3
+      const drawStride = 1 + Math.floor(hyper2 * 2.6);
       let idx = 0;
 
       for (const s of starsList) {
@@ -905,24 +898,18 @@
           continue;
         }
 
-        // draw subsample for calmer high-RPM
         const shouldDraw = (idx % drawStride === 0);
         idx++;
-
         if (!shouldDraw) continue;
 
         const size  = s.r * (0.90 + 0.55 * (energyS * INT)) * (0.85 + 0.65 * twinkle);
         const alphaBase = (0.42 + 0.42 * (energyS * INT)) * (0.70 + 0.75 * twinkle);
-
-        // tame brightness at very high hyper
         const alpha = alphaBase * (1.0 - 0.28 * hyper2);
 
         const hhn = normHue(hue + 110 * (s.z - 0.5));
 
         if (!crispMode) {
           const speedPx = Math.hypot(vx, vy);
-
-          // cap streaks a bit at high hyper (avoid “too much”)
           const len = clamp(
             (10 + 135 * hyper2) * (0.35 + 0.95 * s.z) * (0.35 + 2.0 * speedPx),
             8, 220
@@ -1011,8 +998,7 @@
 
     if (running) {
       if (autoRamp) {
-        // slower startup ramp (10s -> 20s)
-        const rampSeconds = 20;
+        const rampSeconds = 20;   // slower start ramp
         const rampRate = MAX_RPM / rampSeconds;
         setTargetRPM(targetRPM + rampRate * dt);
         if (targetRPM >= MAX_RPM) autoRamp = false;
