@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.7: tunnel synced-feel knob + full draw)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.8: tunnel ramp+osc synced)</title>
 
 <style>
   html, body {
@@ -578,9 +578,7 @@
   let tunnelLastDraw = 0;
 
   // ----- TUNNEL TUNING -----
-  // Super important knob:
-  //  - higher = faster tunnel and "more obviously synced" to spin
-  //  - lower  = calmer / slower (your super cool slow vibe)
+  // Keep your "slow looks sick" vibe but ramp HARD later:
   const TUNNEL_RINGS_PER_REV = 12;
 
   // 0 = draw every frame; 16 = ~60fps; 33 = ~30fps (saves CPU)
@@ -671,20 +669,17 @@
 
     tctx.lineCap = "round";
 
-    // Head ring follows the float phase directly (smooth)
     const rHead  = maxR - ringPhase * ringSpacing;
     const rTail1 = rHead - ringSpacing;
     const rTail2 = rHead - 2 * ringSpacing;
 
     if (rHead > 0) {
-      // Tron head
       tctx.strokeStyle = `hsla(${hh1},100%,72%,${Math.min(1, hiAlpha).toFixed(3)})`;
       tctx.lineWidth = hiWidth;
       tctx.beginPath();
       tctx.arc(cx, cy, rHead, 0, Math.PI * 2);
       tctx.stroke();
 
-      // white core
       tctx.strokeStyle = `rgba(255,255,255,${Math.min(1, (0.35 + 0.75 * pop + 0.25 * energy)).toFixed(3)})`;
       tctx.lineWidth = Math.max(1.2, hiWidth * 0.28);
       tctx.beginPath();
@@ -751,13 +746,11 @@
 
   // ----- BACKGROUND UPDATE -----
   function updateBackground(dt, now) {
-    // if nothing is enabled, keep everything off + buffers cleared
     if (!anyBgOn()) {
       clearAllBgBuffers();
       return;
     }
 
-    // tunnel visibility
     tunnel.style.display = bgTunnelOn ? "block" : "none";
 
     const rpm = speed / 6;
@@ -773,16 +766,28 @@
       pop = pop * pop;
     }
 
-    // ---- tunnel (synced-feel via rings-per-rev knob) ----
+    // ---- tunnel: stronger ramp + oscillation ----
     if (bgTunnelOn && ringCount > 0 && maxR > 0) {
-      const revPerSec  = (speed / 360);
-      const ringsPerSec = revPerSec * TUNNEL_RINGS_PER_REV;
+      const revPerSec = (speed / 360);
+
+      const eSpin = clamp((speed / 6) / 600, 0, 1);
+
+      // harder ramp (slow early, ramps more later)
+      const ramp = 0.18 + 0.82 * Math.pow(eSpin, 3.6);
+
+      // subtle oscillation that increases with speed
+      const oscHz  = 0.35 + 2.2 * eSpin;               // ~0.35..2.55 Hz
+      const oscAmp = (0.03 + 0.15 * eSpin) * INT;      // ~3%..14%
+      const osc    = 1 + oscAmp * Math.sin(t * TAU * oscHz);
+
+      const ringsPerSec = revPerSec * TUNNEL_RINGS_PER_REV * ramp * osc;
 
       ringPhase = (ringPhase - ringsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
 
       const swell = 1 + 0.05 * (energy * INT);
-      tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
+      const wob   = 1 + 0.02 * Math.sin(angle * Math.PI / 180);
+      tunnel.style.transform = `translate(-50%, -50%) scale(${(swell*wob).toFixed(4)})`;
 
       const okToDraw =
         (TUNNEL_DRAW_EVERY_MS <= 0) ||
@@ -853,10 +858,9 @@
 
       const energyS = clamp((speed / 6) / 600, 0, 1);
 
-      // hyperspace later: 450 rpm => 0.75
-      const HYPER_START = 0.75; // 450/600
+      const HYPER_START = 0.75;
       const hyper = clamp((energyS - HYPER_START) / (1 - HYPER_START), 0, 1);
-      const hyper2 = hyper * hyper * hyper; // gentler onset
+      const hyper2 = hyper * hyper * hyper;
 
       const crispMode = (hyper < 0.06);
 
@@ -889,7 +893,6 @@
 
       const pad = 60;
 
-      // slightly calmer at extreme hyper
       const drawStride = 1 + Math.floor(hyper2 * 4.0);
       let idx = 0;
 
@@ -1015,10 +1018,9 @@
 
     if (running) {
       if (autoRamp) {
-        const rampSeconds = 35;         // slower start ramp
+        const rampSeconds = 35;
         const rampRate = MAX_RPM / rampSeconds;
 
-        // gentle ease-in for targetRPM ramp
         const prog = clamp(targetRPM / MAX_RPM, 0, 1);
         const ease = 0.35 + 0.65 * (prog * prog);
 
@@ -1028,7 +1030,6 @@
 
       const targetSpeed = rpmToDeg(targetRPM);
 
-      // slower accel only while autoRamp is active
       const accel = autoRamp ? 170 : 360;
       const decel = 900;
       const maxAccel = (targetSpeed < speed) ? decel : accel;
