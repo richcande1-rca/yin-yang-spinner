@@ -1001,7 +1001,7 @@
 
     if (running) {
       if (autoRamp) {
-        const rampSeconds = 20;   // slower start ramp
+        const rampSeconds = 35;   // slower start ramp
         const rampRate = MAX_RPM / rampSeconds;
         setTargetRPM(targetRPM + rampRate * dt);
         if (targetRPM >= MAX_RPM) autoRamp = false;
@@ -1009,7 +1009,7 @@
 
       const targetSpeed = rpmToDeg(targetRPM);
 
-      const accel = 360;
+     const accel = autoRamp ? 170 : 360; 
       const decel = 900;
       const maxAccel = (targetSpeed < speed) ? decel : accel;
 
