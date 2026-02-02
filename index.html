@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (Factory Loaded v3 - Minimal Controls)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3 + Hyperspace + Top BG Buttons)</title>
 
 <style>
   html, body {
@@ -72,6 +72,40 @@
     inset: 0;
     pointer-events: none;
     mix-blend-mode: screen;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ----- TOP BACKGROUND BUTTONS ----- */
+  #bgUI {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    user-select: none;
+  }
+
+  .chip {
+    background: rgba(10,10,10,0.55);
+    border: 1px solid rgba(120,120,120,0.35);
+    color: #ddd;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    touch-action: manipulation;
+  }
+  .chip:active { transform: translateY(1px); }
+  .chip.off {
+    opacity: 0.45;
+    border-color: rgba(120,120,120,0.20);
   }
 
   /* ----- SPINNER ----- */
@@ -84,6 +118,8 @@
     #container { width: 320px; height: 320px; }
     #hud { bottom: -140px; }
     input[type="range"] { width: 210px; }
+    #bgUI { top: 8px; left: 8px; gap: 6px; }
+    .chip { padding: 6px 9px; font-size: 12px; }
   }
 
   svg {
@@ -148,6 +184,15 @@
 
 <body>
 
+<!-- TOP BACKGROUND BUTTONS -->
+<div id="bgUI" aria-label="Background toggles">
+  <button class="chip" id="btnBG"     type="button" title="Toggle all backgrounds (G)">BG</button>
+  <button class="chip" id="btnAurora" type="button" title="Toggle aurora (A)">Aurora</button>
+  <button class="chip" id="btnTunnel" type="button" title="Toggle tunnel (T)">Tunnel</button>
+  <button class="chip" id="btnStars"  type="button" title="Toggle stars (F)">Stars</button>
+  <button class="chip" id="btnStrobe" type="button" title="Toggle strobe beat (S)">Strobe</button>
+</div>
+
 <canvas id="stars"></canvas>
 <div id="bgAurora"></div>
 <canvas id="tunnel"></canvas>
@@ -164,17 +209,14 @@
 
     <g id="art">
       <circle id="outer" r="100" fill="white"/>
-
       <path id="half" d="
         M 0 -100
         A 100 100 0 0 1 0 100
         A 50 50 0 0 0 0 0
         A 50 50 0 0 1 0 -100
       " fill="black"/>
-
       <circle id="lobe1" cx="0" cy="-50" r="50" fill="white"/>
       <circle id="lobe2" cx="0" cy="50"  r="50" fill="black"/>
-
       <circle id="dot1" cx="0" cy="-42" r="14" fill="black"/>
       <circle id="dot2" cx="0" cy="42"  r="14" fill="white"/>
     </g>
@@ -192,7 +234,6 @@
       <span><strong>Target:</strong> <span id="rpmTarget">0</span></span>
     </div>
 
-    <!-- MINIMAL CONTROLS -->
     <div class="controls">
       <button id="toggleBtn" type="button">Start</button>
       <button id="modeBtn" type="button">Mode</button>
@@ -239,13 +280,20 @@
   const tunnel = document.getElementById("tunnel");
   const tctx = tunnel.getContext("2d", { alpha: true });
 
+  // BG UI buttons
+  const btnBG     = document.getElementById("btnBG");
+  const btnAurora = document.getElementById("btnAurora");
+  const btnTunnel = document.getElementById("btnTunnel");
+  const btnStars  = document.getElementById("btnStars");
+  const btnStrobe = document.getElementById("btnStrobe");
+
   // ----- STATE -----
   let angle = 0;
   let speed = 0;            // deg/sec
-  let running = false;      // ✅ no auto-start
+  let running = false;      // no auto-start
 
   let targetRPM = 0;
-  let autoRamp = false;     // ✅ Start will ramp slider/RPM to max
+  let autoRamp = false;     // Start ramps to max
 
   let last = performance.now();
   let hue = 0;
@@ -326,16 +374,11 @@
     stateEl.textContent = running ? "" : " (stopped)";
     rpmEl.classList.toggle("paused", !running);
 
-    if (running) {
-      autoRamp = true;      // ✅ Start begins ramp-to-max
-    } else {
-      autoRamp = false;     // ✅ Stop pauses ramp
-    }
+    if (running) autoRamp = true;
+    else autoRamp = false;
   }
 
-  function setTargetRPM(rpm) {
-    targetRPM = clamp(rpm, 0, MAX_RPM);
-  }
+  function setTargetRPM(rpm) { targetRPM = clamp(rpm, 0, MAX_RPM); }
 
   function clearTrippyFX() {
     art.removeAttribute("filter");
@@ -419,6 +462,20 @@
   let bgStarsOn = true;
   let bgStrobe = true;
 
+  function syncBgButtons() {
+    btnBG.classList.toggle("off", !bgOn);
+    btnAurora.classList.toggle("off", !(bgOn && bgAuroraOn));
+    btnTunnel.classList.toggle("off", !(bgOn && bgTunnelOn));
+    btnStars.classList.toggle("off",  !(bgOn && bgStarsOn));
+    btnStrobe.classList.toggle("off", !(bgOn && bgStrobe));
+  }
+
+  btnBG.addEventListener("click", () => { bgOn = !bgOn; syncBgButtons(); });
+  btnAurora.addEventListener("click", () => { bgAuroraOn = !bgAuroraOn; syncBgButtons(); });
+  btnTunnel.addEventListener("click", () => { bgTunnelOn = !bgTunnelOn; syncBgButtons(); });
+  btnStars.addEventListener("click", () => { bgStarsOn = !bgStarsOn; syncBgButtons(); });
+  btnStrobe.addEventListener("click", () => { bgStrobe = !bgStrobe; syncBgButtons(); });
+
   let bgLastWrite = 0;
   let bgPhase = 0;
 
@@ -451,7 +508,7 @@
     }
   }
 
-  // ----- TUNNEL CANVAS (CRISP + OPTIMIZED) -----
+  // ----- TUNNEL CANVAS -----
   let TW = 0, TH = 0, TDPR = 1;
   let ringSpacing = 16;
   let ringCount = 0;
@@ -574,6 +631,41 @@
     }
   }
 
+  // ----- HYPERSPACE STAR HELPERS -----
+  function drawStarDot(x, y, size, alpha, hh) {
+    ctx.fillStyle = `hsla(${hh},100%,78%,1)`;
+
+    // glow
+    ctx.globalAlpha = Math.min(1, alpha * 0.40);
+    ctx.beginPath();
+    ctx.arc(x, y, size * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // core
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.5, size * 0.70), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawStarStreak(x, y, vx, vy, len, width, alpha, hh) {
+    const mag = Math.hypot(vx, vy) || 1;
+    const ux = vx / mag;
+    const uy = vy / mag;
+
+    const x2 = x - ux * len;
+    const y2 = y - uy * len;
+
+    ctx.strokeStyle = `hsla(${hh},100%,78%,1)`;
+    ctx.lineWidth = width;
+    ctx.globalAlpha = Math.min(1, alpha);
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
   function updateBackground(dt, now) {
     tunnel.style.display = (bgOn && bgTunnelOn) ? "block" : "none";
 
@@ -581,6 +673,7 @@
       bgAurora.style.opacity = "0";
       tctx.clearRect(0, 0, TW, TH);
       ctx.clearRect(0, 0, W, H);
+      syncBgButtons();
       return;
     }
 
@@ -667,65 +760,88 @@
       }
     }
 
-    // Stars
+    // ----- STARS + HYPERSPACE -----
     if (bgStarsOn) {
-      ctx.fillStyle = "rgba(0,0,0,0.16)";
+      // fade frame
+      ctx.globalCompositeOperation = "source-over";
+      const fade = running ? 0.14 : 0.06;
+      ctx.fillStyle = `rgba(0,0,0,${fade})`;
       ctx.fillRect(0, 0, W, H);
+
+      // additive drawing
+      ctx.globalCompositeOperation = "lighter";
 
       const cx = W * 0.5;
       const cy = H * 0.5;
 
       const breathe = 0.6 + 0.4 * Math.sin(t * 1.2);
-      const accel = (0.6 + 7.0 * (energy * energy) + 8.0 * (energy * energy * energy)) * INT;
+      const accel = (0.9 + 6.5 * (energy * energy) + 8.0 * (energy * energy * energy)) * INT;
       const warp = accel * breathe;
+
+      // Hyperspace threshold (smooth)
+      const hyper = clamp((energy - 0.28) / 0.72, 0, 1); // starts around 28% RPM
+      const hyper2 = hyper * hyper;
 
       for (const s of starsList) {
         s.tw += dt * (0.9 + 2.4 * energy) * (0.6 + s.z);
-        const twinkle = 0.60 + 0.40 * Math.sin(s.tw);
+        const twinkle = 0.55 + 0.45 * Math.sin(s.tw);
 
         const dx = s.x - cx;
         const dy = s.y - cy;
 
         const swirl = 0.0040 * warp;
-        const rx = dx * Math.cos(swirl) - dy * Math.sin(swirl);
-        const ry = dx * Math.sin(swirl) + dy * Math.cos(swirl);
+        const cs = Math.cos(swirl), sn = Math.sin(swirl);
+        const rx = dx * cs - dy * sn;
+        const ry = dx * sn + dy * cs;
 
         const denom = (160 + 520 * s.z);
         const push = (warp * 220) * dt;
-        s.x += (rx / denom) * push;
-        s.y += (ry / denom) * push;
 
-        if (s.x < -12) s.x = W + 12;
-        if (s.x > W + 12) s.x = -12;
-        if (s.y < -12) s.y = H + 12;
-        if (s.y > H + 12) s.y = -12;
+        // velocity vector (approx)
+        const vx = (rx / denom) * push;
+        const vy = (ry / denom) * push;
 
-        const size  = s.r * (0.55 + 0.65 * (energy * INT)) * (0.85 + 0.55 * twinkle);
-        const alpha = (0.10 + 0.35 * (energy * INT)) * (0.55 + 0.70 * twinkle);
+        s.x += vx;
+        s.y += vy;
+
+        if (s.x < -18) s.x = W + 18;
+        if (s.x > W + 18) s.x = -18;
+        if (s.y < -18) s.y = H + 18;
+        if (s.y > H + 18) s.y = -18;
+
+        // visible at 0 RPM
+        const size  = s.r * (0.85 + 0.85 * (energy * INT)) * (0.85 + 0.65 * twinkle);
+        const alpha = (0.20 + 0.55 * (energy * INT)) * (0.60 + 0.75 * twinkle);
 
         const hh = (hue + 110 * (s.z - 0.5)) % 360;
-        ctx.fillStyle = `hsla(${(hh+360)%360}, 100%, 78%, 1)`;
+        const hhn = (hh + 360) % 360;
 
-        ctx.globalAlpha = Math.min(1, alpha * 0.45);
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, size * 1.55, 0, Math.PI * 2);
-        ctx.fill();
+        // Hyperspace streak length + width
+        const speedPx = Math.hypot(vx, vy);
+        const len = (6 + 110 * hyper2) * (0.35 + 0.95 * s.z) * (0.2 + 3.2 * speedPx);
+        const w   = (0.8 + 2.4 * hyper) * (0.35 + 0.85 * s.z);
 
-        ctx.globalAlpha = Math.min(1, alpha);
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, Math.max(0.35, size * 0.60), 0, Math.PI * 2);
-        ctx.fill();
+        // Draw streak if hyper is engaged; always draw dot core
+        if (hyper > 0.02) {
+          ctx.globalAlpha = Math.min(1, alpha * (0.45 + 0.90 * hyper));
+          drawStarStreak(s.x, s.y, vx, vy, len, w, ctx.globalAlpha, hhn);
+        }
 
-        ctx.globalAlpha = 1;
+        drawStarDot(s.x, s.y, size, alpha, hhn);
       }
+
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
     } else {
       ctx.clearRect(0, 0, W, H);
     }
+
+    syncBgButtons();
   }
 
   // ----- UI EVENTS -----
   slider.addEventListener("input", () => {
-    autoRamp = false;                    // ✅ manual control cancels ramp
+    autoRamp = false;
     setTargetRPM(Number(slider.value));
     writeTargetUI(targetRPM);
   });
@@ -740,11 +856,11 @@
     if (e.key === " ") { e.preventDefault(); setRunning(!running); return; }
     if (e.key === "m" || e.key === "M") { nextMode(); return; }
 
-    if (e.key === "g" || e.key === "G") { bgOn = !bgOn; return; }
-    if (e.key === "a" || e.key === "A") { bgAuroraOn = !bgAuroraOn; return; }
-    if (e.key === "t" || e.key === "T") { bgTunnelOn = !bgTunnelOn; return; }
-    if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; return; }
-    if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; return; }
+    if (e.key === "g" || e.key === "G") { bgOn = !bgOn; syncBgButtons(); return; }
+    if (e.key === "a" || e.key === "A") { bgAuroraOn = !bgAuroraOn; syncBgButtons(); return; }
+    if (e.key === "t" || e.key === "T") { bgTunnelOn = !bgTunnelOn; syncBgButtons(); return; }
+    if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; syncBgButtons(); return; }
+    if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; syncBgButtons(); return; }
 
     if (e.key === "ArrowUp")   { autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
     if (e.key === "ArrowDown") { autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
@@ -764,10 +880,10 @@
     t += dt;
 
     if (running) {
-      // ✅ Start ramps slider/targetRPM up to MAX
+      // Start ramps slider/targetRPM up to MAX
       if (autoRamp) {
-        const rampSeconds = 10;                 // adjust if you want
-        const rampRate = MAX_RPM / rampSeconds; // RPM per second
+        const rampSeconds = 10;
+        const rampRate = MAX_RPM / rampSeconds;
         setTargetRPM(targetRPM + rampRate * dt);
         if (targetRPM >= MAX_RPM) autoRamp = false;
       }
@@ -810,11 +926,11 @@
   rebuildBaseTunnel();
   resizeStars();
 
-  // initial UI
   setTargetRPM(0);
   writeTargetUI(0);
   writeRPMUI(0);
   setRunning(false);
+  syncBgButtons();
 
   requestAnimationFrame(tick);
 </script>
