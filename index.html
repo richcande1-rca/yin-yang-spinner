@@ -245,10 +245,7 @@
   let running = false;      // ✅ no auto-start
 
   let targetRPM = 0;
-
-  // Start ramp: when you press Start, we ramp an internal "startRPM" up to targetRPM
-  let startRampOn = false;
-  let startRampRPM = 0;
+  let autoRamp = false;     // ✅ Start will ramp slider/RPM to max
 
   let last = performance.now();
   let hue = 0;
@@ -330,11 +327,9 @@
     rpmEl.classList.toggle("paused", !running);
 
     if (running) {
-      // ✅ Start ramp begins from current speed (or 0)
-      startRampOn = true;
-      startRampRPM = clamp(speed / 6, 0, MAX_RPM);
+      autoRamp = true;      // ✅ Start begins ramp-to-max
     } else {
-      startRampOn = false;
+      autoRamp = false;     // ✅ Stop pauses ramp
     }
   }
 
@@ -730,15 +725,15 @@
 
   // ----- UI EVENTS -----
   slider.addEventListener("input", () => {
+    autoRamp = false;                    // ✅ manual control cancels ramp
     setTargetRPM(Number(slider.value));
     writeTargetUI(targetRPM);
-    // If you drag the slider while ramping, we just ramp toward the new target.
   });
 
   toggleBtn.addEventListener("click", () => setRunning(!running));
   modeBtn.addEventListener("click", nextMode);
 
-  // Touch polish: avoid double-tap zoom on some mobile browsers
+  // Touch polish: avoid gesture zoom on some mobile browsers
   document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
 
   window.addEventListener("keydown", (e) => {
@@ -751,8 +746,15 @@
     if (e.key === "f" || e.key === "F") { bgStarsOn = !bgStarsOn; return; }
     if (e.key === "s" || e.key === "S") { bgStrobe = !bgStrobe; return; }
 
-    if (e.key === "ArrowUp")   { setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
-    if (e.key === "ArrowDown") { setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
+    if (e.key === "ArrowUp")   { autoRamp = false; setTargetRPM(targetRPM + 5); writeTargetUI(targetRPM); return; }
+    if (e.key === "ArrowDown") { autoRamp = false; setTargetRPM(targetRPM - 5); writeTargetUI(targetRPM); return; }
+  });
+
+  // ----- RESIZE HOOKS -----
+  window.addEventListener("resize", () => {
+    resizeTunnel();
+    rebuildBaseTunnel();
+    resizeStars();
   });
 
   // ----- ANIMATION LOOP -----
@@ -762,24 +764,16 @@
     t += dt;
 
     if (running) {
-      // ✅ Start button triggers a gentle ramp of TARGET from current to slider target
-      // This avoids "instant target jump" feel on touch devices.
-      let effectiveTargetRPM = targetRPM;
-
-      if (startRampOn) {
-        // ramp rate in RPM/sec (tweak: lower = slower start)
-        const startRampRate = 90;  // ~6-7s to reach 600, feels smooth on phones
-        startRampRPM = Math.min(targetRPM, startRampRPM + startRampRate * dt);
-        effectiveTargetRPM = startRampRPM;
-
-        if (startRampRPM >= targetRPM - 0.01) {
-          startRampOn = false;
-        }
+      // ✅ Start ramps slider/targetRPM up to MAX
+      if (autoRamp) {
+        const rampSeconds = 10;                 // adjust if you want
+        const rampRate = MAX_RPM / rampSeconds; // RPM per second
+        setTargetRPM(targetRPM + rampRate * dt);
+        if (targetRPM >= MAX_RPM) autoRamp = false;
       }
 
-      const targetSpeed = rpmToDeg(effectiveTargetRPM);
+      const targetSpeed = rpmToDeg(targetRPM);
 
-      // Your existing accel/decel (kept)
       const accel = 360;
       const decel = 900;
       const maxAccel = (targetSpeed < speed) ? decel : accel;
@@ -797,7 +791,6 @@
       writeRPMUI(speed / 6);
       modes[modeIndex].update?.(dt);
     } else {
-      // When stopped, keep UI accurate
       writeRPMUI(speed / 6);
     }
 
@@ -817,7 +810,7 @@
   rebuildBaseTunnel();
   resizeStars();
 
-  // No "reset" button now, but we still want a clean initial state:
+  // initial UI
   setTargetRPM(0);
   writeTargetUI(0);
   writeRPMUI(0);
