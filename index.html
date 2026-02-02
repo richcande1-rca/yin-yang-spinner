@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.5 no master BG + hyperspace @450)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.6: no master BG + tunnel 1 ring/RPM + hyperspace @450 + slower ramp)</title>
 
 <style>
   html, body {
@@ -291,7 +291,7 @@
   let running = false;      // no auto-start
 
   let targetRPM = 0;
-  let autoRamp = false;     // Start ramps to max
+  let autoRamp = false;     // Start ramps up
 
   let last = performance.now();
   let hue = 0;
@@ -393,7 +393,8 @@
     stateEl.textContent = running ? "" : " (stopped)";
     rpmEl.classList.toggle("paused", !running);
 
-    autoRamp = running; // only ramp when starting
+    // autoRamp only when starting
+    autoRamp = running;
   }
 
   function setTargetRPM(rpm) { targetRPM = clamp(rpm, 0, MAX_RPM); }
@@ -486,7 +487,6 @@
     btnStrobe.classList.toggle("off", !bgStrobe);
   }
 
-  // clear background buffers when nothing is enabled
   function clearAllBgBuffers() {
     bgAurora.style.opacity = "0";
     tunnel.style.display = "none";
@@ -574,10 +574,8 @@
   let ringCount = 0;
   let maxR = 0;
 
-  let ringPhase = 0;        // FLOAT phase
+  let ringPhase = 0;        // FLOAT phase (we draw by radius, not index)
   let tunnelLastDraw = 0;
-
-  const TUNNEL_GEAR = 0.5;  // 0.5 = half speed vs RPM
 
   const baseTunnel = document.createElement("canvas");
   const bctx = baseTunnel.getContext("2d", { alpha: true });
@@ -664,17 +662,20 @@
 
     tctx.lineCap = "round";
 
+    // Head ring follows the float phase directly (smooth)
     const rHead  = maxR - ringPhase * ringSpacing;
     const rTail1 = rHead - ringSpacing;
     const rTail2 = rHead - 2 * ringSpacing;
 
     if (rHead > 0) {
+      // Tron head
       tctx.strokeStyle = `hsla(${hh1},100%,72%,${Math.min(1, hiAlpha).toFixed(3)})`;
       tctx.lineWidth = hiWidth;
       tctx.beginPath();
       tctx.arc(cx, cy, rHead, 0, Math.PI * 2);
       tctx.stroke();
 
+      // white core
       tctx.strokeStyle = `rgba(255,255,255,${Math.min(1, (0.35 + 0.75 * pop + 0.25 * energy)).toFixed(3)})`;
       tctx.lineWidth = Math.max(1.2, hiWidth * 0.28);
       tctx.beginPath();
@@ -739,6 +740,7 @@
     ctx.restore();
   }
 
+  // ----- BACKGROUND UPDATE -----
   function updateBackground(dt, now) {
     // if nothing is enabled, keep everything off + buffers cleared
     if (!anyBgOn()) {
@@ -762,10 +764,11 @@
       pop = pop * pop;
     }
 
-    // ---- tunnel (half speed gear) ----
+    // ---- tunnel (1 ring per RPM) ----
     if (bgTunnelOn && ringCount > 0 && maxR > 0) {
-      const stepsPerSec = (rpm / 60) * ringCount * TUNNEL_GEAR;
-      ringPhase = (ringPhase - stepsPerSec * dt) % ringCount;
+      // 1 tunnel ring per RPM (calm, time-based motion)
+      const ringsPerSec = rpm / 60;
+      ringPhase = (ringPhase - ringsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
 
       const swell = 1 + 0.05 * (energy * INT);
@@ -842,7 +845,7 @@
       // hyperspace later: 450 rpm => 0.75
       const HYPER_START = 0.75; // 450/600
       const hyper = clamp((energyS - HYPER_START) / (1 - HYPER_START), 0, 1);
-      const hyper2 = hyper * hyper;
+      const hyper2 = hyper * hyper * hyper; // gentler onset
 
       const crispMode = (hyper < 0.06);
 
@@ -875,7 +878,8 @@
 
       const pad = 60;
 
-      const drawStride = 1 + Math.floor(hyper2 * 2.6); // calmer at very high hyper
+      // slightly calmer at extreme hyper
+      const drawStride = 1 + Math.floor(hyper2 * 4.0);
       let idx = 0;
 
       for (const s of starsList) {
@@ -950,7 +954,6 @@
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
     } else {
-      // if stars off, clear star canvas once per frame to avoid “ghost”
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
@@ -1001,15 +1004,21 @@
 
     if (running) {
       if (autoRamp) {
-        const rampSeconds = 35;   // slower start ramp
+        const rampSeconds = 35;         // slower start ramp
         const rampRate = MAX_RPM / rampSeconds;
-        setTargetRPM(targetRPM + rampRate * dt);
+
+        // gentle ease-in for targetRPM ramp
+        const prog = clamp(targetRPM / MAX_RPM, 0, 1);
+        const ease = 0.35 + 0.65 * (prog * prog);
+
+        setTargetRPM(targetRPM + rampRate * dt * ease);
         if (targetRPM >= MAX_RPM) autoRamp = false;
       }
 
       const targetSpeed = rpmToDeg(targetRPM);
 
-     const accel = autoRamp ? 170 : 360; 
+      // slower accel only while autoRamp is active
+      const accel = autoRamp ? 170 : 360;
       const decel = 900;
       const maxAccel = (targetSpeed < speed) ? decel : accel;
 
@@ -1041,6 +1050,7 @@
 
   // init
   applyMode(modeIndex);
+
   resizeTunnel();
   rebuildBaseTunnel();
   resizeStars();
@@ -1049,6 +1059,12 @@
   writeTargetUI(0);
   writeRPMUI(0);
   setRunning(false);
+
+  // start with no BG FX
+  bgAuroraOn = false;
+  bgTunnelOn = false;
+  bgStarsOn  = false;
+  bgStrobe   = false;
   syncBgButtons();
   clearAllBgBuffers();
 
