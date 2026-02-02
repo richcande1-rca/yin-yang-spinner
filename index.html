@@ -760,11 +760,14 @@
       }
     }
 
-    // ----- STARS + HYPERSPACE -----
+    // ----- STARS + HYPERSPACE (FIXED: no fade-out) -----
     if (bgStarsOn) {
       // fade frame
       ctx.globalCompositeOperation = "source-over";
-      const fade = running ? 0.14 : 0.06;
+
+      // Much gentler fade, and scaled down further at low RPM
+      const baseFade = running ? 0.055 : 0.025;
+      const fade = baseFade * (0.35 + 0.65 * energy);
       ctx.fillStyle = `rgba(0,0,0,${fade})`;
       ctx.fillRect(0, 0, W, H);
 
@@ -779,7 +782,7 @@
       const warp = accel * breathe;
 
       // Hyperspace threshold (smooth)
-      const hyper = clamp((energy - 0.28) / 0.72, 0, 1); // starts around 28% RPM
+      const hyper = clamp((energy - 0.28) / 0.72, 0, 1);
       const hyper2 = hyper * hyper;
 
       for (const s of starsList) {
@@ -809,9 +812,10 @@
         if (s.y < -18) s.y = H + 18;
         if (s.y > H + 18) s.y = -18;
 
-        // visible at 0 RPM
         const size  = s.r * (0.85 + 0.85 * (energy * INT)) * (0.85 + 0.65 * twinkle);
-        const alpha = (0.20 + 0.55 * (energy * INT)) * (0.60 + 0.75 * twinkle);
+
+        // Higher minimum brightness so stars never "lose the fight" vs fade
+        const alpha = (0.38 + 0.55 * (energy * INT)) * (0.65 + 0.85 * twinkle);
 
         const hh = (hue + 110 * (s.z - 0.5)) % 360;
         const hhn = (hh + 360) % 360;
@@ -821,7 +825,6 @@
         const len = (6 + 110 * hyper2) * (0.35 + 0.95 * s.z) * (0.2 + 3.2 * speedPx);
         const w   = (0.8 + 2.4 * hyper) * (0.35 + 0.85 * s.z);
 
-        // Draw streak if hyper is engaged; always draw dot core
         if (hyper > 0.02) {
           ctx.globalAlpha = Math.min(1, alpha * (0.45 + 0.90 * hyper));
           drawStarStreak(s.x, s.y, vx, vy, len, w, ctx.globalAlpha, hhn);
@@ -849,7 +852,6 @@
   toggleBtn.addEventListener("click", () => setRunning(!running));
   modeBtn.addEventListener("click", nextMode);
 
-  // Touch polish: avoid gesture zoom on some mobile browsers
   document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
 
   window.addEventListener("keydown", (e) => {
@@ -880,7 +882,6 @@
     t += dt;
 
     if (running) {
-      // Start ramps slider/targetRPM up to MAX
       if (autoRamp) {
         const rampSeconds = 10;
         const rampRate = MAX_RPM / rampSeconds;
