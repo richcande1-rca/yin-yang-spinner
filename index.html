@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.6: no master BG + tunnel 1 ring/RPM + hyperspace @450 + slower ramp)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.7: tunnel synced-feel knob + full draw)</title>
 
 <style>
   html, body {
@@ -577,6 +577,15 @@
   let ringPhase = 0;        // FLOAT phase (we draw by radius, not index)
   let tunnelLastDraw = 0;
 
+  // ----- TUNNEL TUNING -----
+  // Super important knob:
+  //  - higher = faster tunnel and "more obviously synced" to spin
+  //  - lower  = calmer / slower (your super cool slow vibe)
+  const TUNNEL_RINGS_PER_REV = 12;
+
+  // 0 = draw every frame; 16 = ~60fps; 33 = ~30fps (saves CPU)
+  const TUNNEL_DRAW_EVERY_MS = 0;
+
   const baseTunnel = document.createElement("canvas");
   const bctx = baseTunnel.getContext("2d", { alpha: true });
   let baseDirty = true;
@@ -764,20 +773,22 @@
       pop = pop * pop;
     }
 
-    // ---- tunnel (1 ring per RPM) ----
+    // ---- tunnel (synced-feel via rings-per-rev knob) ----
     if (bgTunnelOn && ringCount > 0 && maxR > 0) {
-      // 1 tunnel ring per RPM (calm, time-based motion)
-      const ringsPerSec = rpm / 60;
+      const revPerSec  = (speed / 360);
+      const ringsPerSec = revPerSec * TUNNEL_RINGS_PER_REV;
+
       ringPhase = (ringPhase - ringsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
 
       const swell = 1 + 0.05 * (energy * INT);
       tunnel.style.transform = `translate(-50%, -50%) scale(${swell.toFixed(4)})`;
 
-      const popHot = (pop > 0.18);
-      const timeKick = (now - tunnelLastDraw > 55);
+      const okToDraw =
+        (TUNNEL_DRAW_EVERY_MS <= 0) ||
+        (now - tunnelLastDraw >= TUNNEL_DRAW_EVERY_MS);
 
-      if (popHot || timeKick) {
+      if (okToDraw) {
         drawTunnel(energy * INT, pop);
         tunnelLastDraw = now;
       }
