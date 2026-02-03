@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.10: monotonic stars + medium last-1/5 punch + bright pinpoints + slow-start streaks)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.9: bg-clear fix + adaptive stars + faster tunnel)</title>
 
 <style>
   html, body {
@@ -430,7 +430,7 @@
     },
     {
       name: "Neon Glow Pulse",
-      onEnter(){ clearTrippyFX(); setDotStroke(true); updateColors(); spinner.style.mixBlend-mode = "screen"; },
+      onEnter(){ clearTrippyFX(); setDotStroke(true); updateColors(); spinner.style.mixBlendMode = "screen"; },
       update(dt){
         hue += (speed * 0.02 * dt);
         updateColors();
@@ -532,6 +532,7 @@
 
   btnStrobe.addEventListener("click", () => {
     bgStrobe = !bgStrobe;
+    // Don't clear here; strobe alone shouldn't preserve visuals anyway due to anyVisualBgOn()
     syncBgButtons();
   });
 
@@ -578,12 +579,15 @@
   let ringCount = 0;
   let maxR = 0;
 
-  let ringPhase = 0;
+  let ringPhase = 0;        // FLOAT phase (we draw by radius, not index)
   let tunnelLastDraw = 0;
 
   // ----- TUNNEL TUNING -----
-  const TUNNEL_RINGS_PER_REV = 18;
-  const TUNNEL_SPEED_MULT    = 1.35;
+  // Faster ring progression:
+  const TUNNEL_RINGS_PER_REV = 18;     // was 12
+  const TUNNEL_SPEED_MULT    = 1.35;   // extra shove
+
+  // 0 = draw every frame; 16 = ~60fps; 33 = ~30fps (saves CPU)
   const TUNNEL_DRAW_EVERY_MS = 0;
 
   const baseTunnel = document.createElement("canvas");
@@ -711,16 +715,14 @@
     ctx.save();
     ctx.fillStyle = `hsla(${hh},100%,78%,1)`;
 
-    // outer glow
     ctx.globalAlpha = Math.min(1, alpha * 0.40);
     ctx.beginPath();
     ctx.arc(x, y, size * 1.9, 0, Math.PI * 2);
     ctx.fill();
 
-    // brighter + sharper pinpoint (Option #3)
-    ctx.globalAlpha = Math.min(1, alpha * 1.4);
+    ctx.globalAlpha = Math.min(1, alpha);
     ctx.beginPath();
-    ctx.arc(x, y, Math.max(0.45, size * 0.55), 0, Math.PI * 2);
+    ctx.arc(x, y, Math.max(0.5, size * 0.70), 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -866,8 +868,9 @@
       const hyper2 = hyper * hyper * hyper;
 
       // "cold" space until you’re really near hyper
-      const crispMode = (hyper < 0.04);
+      const crispMode = (hyper < 0.04); // was 0.06
 
+      // ----- CLEARING / TRAILS -----
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
@@ -895,20 +898,22 @@
       const e2 = energyS * energyS;
       const e3 = e2 * energyS;
 
+      // your original accel curve (clean, always increasing)
       const accel = (0.9 + 6.5 * e2 + 8.0 * e3) * INT;
 
-      let lastGate = (hyper - 0.80) / 0.20;
+      // Medium "last 1/5th" boost: only in the final 20% of hyper (hyper 0.8..1.0)
+      let lastGate = (hyper - 0.80) / 0.20;      // 0..1 in last fifth
       lastGate = clamp(lastGate, 0, 1);
-      lastGate = lastGate * lastGate;
+      lastGate = lastGate * lastGate;            // ease-in so it ramps nicely
 
-      const charge = 1.0 + 1.20 * lastGate;
+      const charge = 1.0 + 1.20 * lastGate;      // medium: up to ~2.2x at the very end
       const warp   = accel * charge;
       // ================================================================
 
       const pad = 60;
 
       // Adaptive draw reduction when FPS drops
-      const extra = Math.floor(perfSlow * 4);
+      const extra = Math.floor(perfSlow * 4); // 0..4
       const drawStride = 1 + Math.floor(hyper2 * 4.0) + extra;
 
       let idx = 0;
@@ -918,6 +923,7 @@
           respawnStar(s);
         }
 
+        // keep phase moving, but make the star *rendering* cold (no strong pulsing)
         s.tw += dt * (0.9 + 2.4 * energyS) * (0.6 + s.z);
 
         // cold twinkle: basically steady (no “breathing” feel)
@@ -964,22 +970,13 @@
 
         if (!crispMode) {
           const speedPx = Math.hypot(vx, vy);
-
-          // slow-start streak ramp: calm onset, nice at full RPM
-          const streakGate = hyper * hyper;
-          const streakHi   = streakGate * streakGate;
-
           const len = clamp(
-            (8 + 95 * streakGate + 90 * streakHi) *
-            (0.35 + 0.95 * s.z) *
-            (0.35 + 2.0 * speedPx),
-            6, 220
+            (10 + 135 * hyper2) * (0.35 + 0.95 * s.z) * (0.35 + 2.0 * speedPx),
+            8, 220
           );
-
-          const w = clamp(
-            (0.6 + 1.4 * streakGate + 1.2 * streakHi) *
-            (0.35 + 0.85 * s.z),
-            0.6, 3.2
+          const w   = clamp(
+            (0.8 + 2.2 * hyper) * (0.35 + 0.85 * s.z),
+            0.7, 3.4
           );
 
           drawStarStreak(
@@ -1045,7 +1042,7 @@
     t += dt;
 
     // Adaptive performance bias
-    const targetSlow = dt > 0.022 ? 1 : 0;
+    const targetSlow = dt > 0.022 ? 1 : 0; // ~45fps threshold
     perfSlow += (targetSlow - perfSlow) * 0.05;
 
     if (running) {
