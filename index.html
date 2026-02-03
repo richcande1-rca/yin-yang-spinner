@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yin Yang — Multi-Mode Spinner (v3.8: tunnel ramp+osc synced)</title>
+<title>Yin Yang — Multi-Mode Spinner (v3.9: bg-clear fix + adaptive stars + faster tunnel)</title>
 
 <style>
   html, body {
@@ -297,6 +297,9 @@
   let hue = 0;
   let t = 0;
 
+  // Adaptive performance bias (no UI)
+  let perfSlow = 0; // 0..1
+
   const steps = 24;
   const stepSize = 360 / steps;
 
@@ -324,8 +327,9 @@
     s.tw = Math.random() * TAU;
   }
 
-  function anyBgOn() {
-    return bgAuroraOn || bgTunnelOn || bgStarsOn || bgStrobe;
+  // Visual BG only (strobe is a modifier, not a visual layer)
+  function anyVisualBgOn() {
+    return bgAuroraOn || bgTunnelOn || bgStarsOn;
   }
 
   // ----- UI THROTTLE / CACHES -----
@@ -490,24 +494,24 @@
   function clearAllBgBuffers() {
     bgAurora.style.opacity = "0";
     tunnel.style.display = "none";
-    tctx.clearRect(0, 0, TW, TH);
+    tctx.clearRect(0, 0, TW || 0, TH || 0);
 
     trailDebt = 0;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W || 0, H || 0);
   }
 
   btnAurora.addEventListener("click", () => {
     bgAuroraOn = !bgAuroraOn;
-    if (!anyBgOn()) clearAllBgBuffers();
+    if (!anyVisualBgOn()) clearAllBgBuffers();
     syncBgButtons();
   });
 
   btnTunnel.addEventListener("click", () => {
     bgTunnelOn = !bgTunnelOn;
-    if (!anyBgOn()) clearAllBgBuffers();
+    if (!anyVisualBgOn()) clearAllBgBuffers();
     syncBgButtons();
   });
 
@@ -521,13 +525,14 @@
       ctx.globalCompositeOperation = "source-over";
       ctx.clearRect(0, 0, W, H);
     } else {
-      if (!anyBgOn()) clearAllBgBuffers();
+      if (!anyVisualBgOn()) clearAllBgBuffers();
     }
     syncBgButtons();
   });
 
   btnStrobe.addEventListener("click", () => {
     bgStrobe = !bgStrobe;
+    // Don't clear here; strobe alone shouldn't preserve visuals anyway due to anyVisualBgOn()
     syncBgButtons();
   });
 
@@ -578,8 +583,9 @@
   let tunnelLastDraw = 0;
 
   // ----- TUNNEL TUNING -----
-  // Keep your "slow looks sick" vibe but ramp HARD later:
-  const TUNNEL_RINGS_PER_REV = 12;
+  // Faster ring progression:
+  const TUNNEL_RINGS_PER_REV = 18;     // was 12
+  const TUNNEL_SPEED_MULT    = 1.35;   // extra shove
 
   // 0 = draw every frame; 16 = ~60fps; 33 = ~30fps (saves CPU)
   const TUNNEL_DRAW_EVERY_MS = 0;
@@ -746,7 +752,7 @@
 
   // ----- BACKGROUND UPDATE -----
   function updateBackground(dt, now) {
-    if (!anyBgOn()) {
+    if (!anyVisualBgOn()) {
       clearAllBgBuffers();
       return;
     }
@@ -757,7 +763,7 @@
     const energy = clamp(rpm / 600, 0, 1);
     const e = energy * INT;
 
-    // strobe pop
+    // strobe pop (modifier)
     let pop = 0;
     if (bgStrobe) {
       const beatHz = 1.2 + 10.5 * e;
@@ -766,21 +772,20 @@
       pop = pop * pop;
     }
 
-    // ---- tunnel: stronger ramp + oscillation ----
+    // ---- tunnel: faster progression + oscillation ----
     if (bgTunnelOn && ringCount > 0 && maxR > 0) {
       const revPerSec = (speed / 360);
 
-      const eSpin = clamp((speed / 6) / 600, 0, 1);
-
       // harder ramp (slow early, ramps more later)
-      const ramp = 0.18 + 0.82 * Math.pow(eSpin, 3.6);
+      const ramp = 0.22 + 0.78 * Math.pow(energy, 3.2);  // was 0.18 + 0.82 * pow(...,3.6)
 
       // subtle oscillation that increases with speed
-      const oscHz  = 0.35 + 2.2 * eSpin;               // ~0.35..2.55 Hz
-      const oscAmp = (0.03 + 0.15 * eSpin) * INT;      // ~3%..14%
+      const oscHz  = 0.35 + 2.2 * energy;               // ~0.35..2.55 Hz
+      const oscAmp = (0.03 + 0.15 * energy) * INT;      // ~3%..14%
       const osc    = 1 + oscAmp * Math.sin(t * TAU * oscHz);
 
-      const ringsPerSec = revPerSec * TUNNEL_RINGS_PER_REV * ramp * osc;
+      // speed-up multiplier
+      const ringsPerSec = revPerSec * TUNNEL_RINGS_PER_REV * ramp * osc * TUNNEL_SPEED_MULT;
 
       ringPhase = (ringPhase - ringsPerSec * dt) % ringCount;
       if (ringPhase < 0) ringPhase += ringCount;
@@ -798,7 +803,7 @@
         tunnelLastDraw = now;
       }
     } else {
-      tctx.clearRect(0, 0, TW, TH);
+      tctx.clearRect(0, 0, TW || 0, TH || 0);
       tunnel.style.transform = `translate(-50%, -50%)`;
     }
 
@@ -893,7 +898,10 @@
 
       const pad = 60;
 
-      const drawStride = 1 + Math.floor(hyper2 * 4.0);
+      // Adaptive draw reduction when FPS drops
+      const extra = Math.floor(perfSlow * 4); // 0..4
+      const drawStride = 1 + Math.floor(hyper2 * 4.0) + extra;
+
       let idx = 0;
 
       for (const s of starsList) {
@@ -971,7 +979,7 @@
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W || 0, H || 0);
       trailDebt = 0;
     }
   }
@@ -1015,6 +1023,10 @@
 
     dt = Math.min(dt, 0.05);
     t += dt;
+
+    // Adaptive performance bias
+    const targetSlow = dt > 0.022 ? 1 : 0; // ~45fps threshold
+    perfSlow += (targetSlow - perfSlow) * 0.05;
 
     if (running) {
       if (autoRamp) {
