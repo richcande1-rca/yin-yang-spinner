@@ -429,19 +429,15 @@
       update(dt){ hue += (speed * 0.02 * dt); updateColors(); }
     },
     {
-     {
-  name: "Neon Glow Pulse",
-  onEnter(){ clearTrippyFX(); setDotStroke(true); updateColors(); spinner.style.mixBlendMode = "screen"; },
-  update(dt){
-    hue += (speed * 0.02 * dt);
-    updateColors();
-    const rpm = speed / 6;
-    const pulse = 0.5 + 0.5 * Math.sin(t * 2.2);
-    const glow = clamp((rpm / 600) * 18 + pulse * 8, 0, 28);
-    spinner.style.filter = `drop-shadow(0 0 ${glow.toFixed(1)}px hsl(${(hue%360+360)%360},100%,60%))`;
-  }
-},
-
+      name: "Neon Glow Pulse",
+      onEnter(){ clearTrippyFX(); setDotStroke(true); updateColors(); spinner.style.mixBlend-mode = "screen"; },
+      update(dt){
+        hue += (speed * 0.02 * dt);
+        updateColors();
+        const rpm = speed / 6;
+        const pulse = 0.5 + 0.5 * Math.sin(t * 2.2);
+        const glow = clamp((rpm / 600) * 18 + pulse * 8, 0, 28);
+        spinner.style.filter = `drop-shadow(0 0 ${glow.toFixed(1)}px hsl(${(hue%360+360)%360},100%,60%))`;
       }
     },
     {
