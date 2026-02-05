@@ -407,7 +407,11 @@
     autoRamp = running;
   }
 
-  function setTargetRPM(rpm) { targetRPM = clamp(rpm, 0, MAX_RPM); }
+  // UPDATED: supports functional updates to avoid frame-lag during autoRamp
+  function setTargetRPM(v) {
+    const rpm = (typeof v === "function") ? v(targetRPM) : v;
+    targetRPM = clamp(rpm, 0, MAX_RPM);
+  }
 
   function clearTrippyFX() {
     art.removeAttribute("filter");
@@ -1103,14 +1107,18 @@
 
     if (running) {
       if (autoRamp) {
-        const rampSeconds = 35;
-        const rampRate = MAX_RPM / rampSeconds;
+        // "12 means 12" ramp: keeps your smooth ease curve, but reaches MAX in ~12 seconds.
+        const rampSeconds = 12;
+        const I = 1.96604666; // compensation factor for ease = 0.35 + 0.65*prog^2
+        const rampRate = (MAX_RPM * I) / rampSeconds;
 
-        const prog = clamp(targetRPM / MAX_RPM, 0, 1);
-        const ease = 0.35 + 0.65 * (prog * prog);
-
-        setTargetRPM(targetRPM + rampRate * dt * ease);
-        if (targetRPM >= MAX_RPM) autoRamp = false;
+        setTargetRPM(prev => {
+          const prog = clamp(prev / MAX_RPM, 0, 1);
+          const ease = 0.35 + 0.65 * (prog * prog);
+          const next = prev + rampRate * dt * ease;
+          if (next >= MAX_RPM) autoRamp = false;
+          return next;
+        });
       }
 
       const targetSpeed = rpmToDeg(targetRPM);
