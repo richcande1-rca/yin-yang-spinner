@@ -108,10 +108,21 @@
     border-color: rgba(120,120,120,0.20);
   }
 
-  /* ----- SPINNER ----- */
+ /* ----- SPINNER ----- */
+  /* Desktop caps at 420px, mobile scales down automatically so BG stays visible */
   #container {
-    width: 420px;
-    height: 420px;
+    width: min(70vmin, 420px);
+    height: min(70vmin, 420px);
+  }
+
+  @media (max-width: 520px) {
+    /* Use stable viewport units on modern mobile browsers to avoid size-jump */
+    #container { width: min(64vmin, 320px); height: min(64vmin, 320px); }
+    #hud { bottom: -140px; }
+    input[type="range"] { width: 210px; }
+    #bgUI { top: 8px; left: 8px; gap: 6px; }
+    .chip { padding: 6px 9px; font-size: 12px; }
+  }
   }
 
   @media (max-width: 520px) {
